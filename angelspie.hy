@@ -4,7 +4,6 @@
 (import Xlib)
 
 (setv *disp* (Xlib.display.Display))
-(setv *xatoms* {})
 
 ;; UTILS
 
@@ -20,11 +19,10 @@
 
 (defn window-xprop-value [prop_name]
   "Returns the given property of the window, e.g. pass '_NET_WM_STATE' (String)."
-  (when (not (in prop_name *xatoms*))
-    (setv (. *xatoms* [prop_name]) (*disp*.intern_atom prop_name)))
-  (setv xprop (*current-xwindow*.get_full_property
-                (. *xatoms* [prop_name])
-                Xlib.X.AnyPropertyType))
+  (setv xprop
+        (*current-xwindow*.get_full_property
+          (*disp*.intern_atom prop_name)
+          Xlib.X.AnyPropertyType))
   (. xprop.value [0]))
 
 ;; DEVILSPIE FUNCTIONS/MACROS
@@ -38,19 +36,19 @@
 
 (defn above []
   "Set the current window to be above all normal windows (returns TRUE)."
-  (not-yet-implemented "above"))
+  (*current-window*.alwaysOnTop))
 
 (defn below []
   "Set the current window to be below all normal windows (returns TRUE)."
-  (pwc.lowerWindow *current-window*))
+  (*current-window*.alwaysOnBottom))
 
 (defn center []
-  "enter position of current window (returns boolean)."
+  "Center position of current window (returns boolean)."
   (not-yet-implemented "center"))
 
 (defn close []
   "Close the current window (returns TRUE)."
-  (pwc.close *current-window*))
+  (*current-window*close))
 
 (defn contains [string substring]
   "True if string contains substring."
@@ -80,26 +78,22 @@
         (setv pos (. parts [1])))
     (setv size geom-str))
   (setv [width height] (geom-str.split "x"))
-  (pwc.resizeTo *current-window* width height)
+  (*current-window*.resizeTo width height)
   (when pos
     (setv [x y] (pos.split "+"))
-    (pwc.moveTo *current-window* x y)))
-
-(defn hex []
-  "Transform the integer parameter into an unsigned hexadecimal string (with 0x prefix)."
-  (not-yet-implemented "hex"))
+    (*current-window*.moveTo x y)))
 
 (defn matches [string pattern]
   "True if the regexp pattern matches str"
   (not-yet-implemented "matches"))
 
-(defn opacity []
+(defn opacity [level]
   "Change the opacity level (as integer in 0..100) of the current window (returns boolean)."
   (not-yet-implemented "opacity"))
 
 (defn maximize []
   "Maximise the current window (returns TRUE)."
-  (not-yet-implemented "maximize"))
+  (*current-window*.maximize))
 
 (defn maximize_vertically []
   "Maximise vertically the current window (returns TRUE)."
@@ -111,19 +105,23 @@
 
 (defn minimize []
   "Minimise the current window (returns TRUE)."
-  (not-yet-implemented "minimize"))
+  (*current-window*.minimize))
 
 (defn pin []
   "Pin the current window to all workspaces (returns TRUE)."
   (not-yet-implemented "pin"))
 
-(defn set_viewport []
+(defn set_viewport [viewport-nb]
   "Move the window to a specific viewport number, counting from 1 (returns boolean)."
   (not-yet-implemented "set_viewport"))
 
 (defn set_workspace [workspace-nb]
   "Move the window to a specific workspace number, counting from 1 (returns boolean)."
-  (spawn_async (concat "wmctrl -i -r " (window_xid) " -t " (- workspace-nb 1))))
+  (*current-xwindow*.change_property
+    (*disp*.intern_atom "_NET_WM_DESKTOP")
+    Xlib.Xatom.CARDINAL
+    32
+    [(- workspace-nb 1) 0x0 0x0 0x0]))
 
 (defn shade []
   "Shade ('roll up') the current window (returns TRUE)."
@@ -153,7 +151,11 @@
 
 (defn undecorate []
   "Remove the window manager decorations from the current window (returns boolean)."
-  (spawn_async (concat "xprop -id " (window_xid) " -format _MOTIF_WM_HINTS 32c -set _MOTIF_WM_HINTS 2")))
+  (*current-xwindow*.change_property
+    (*disp*.intern_atom "_MOTIF_WM_HINTS")
+    (*disp*.intern_atom "_MOTIF_WM_HINTS")
+    32
+    [0x2 0x0 0x0 0x0 0x0]))
 
 (defn unmaximize []
   "Un-maximise the current window (returns TRUE)."
@@ -189,8 +191,6 @@
 
 (defn window_property [prop-name]
   "Returns the given property of the window, e.g. pass '_NET_WM_STATE' (String)."
-  (when (not (in prop-name *xatoms*))
-    (setv (. *xatoms* [prop-name]) (*disp*.intern_atom prop_name)))
   (setv xprop-value (window-xprop-value prop-name))
   (*disp*.get_atom_name xprop-value))
 
