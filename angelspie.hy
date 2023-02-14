@@ -1,4 +1,3 @@
-; NOTE THAT YOU WILL NEED TO REPLACE (if with (when in YOUR .ds files and (str with (concat, and (is with (=
 (import subprocess)
 (import pywinctl :as pwc)
 (import time)
