@@ -1,6 +1,10 @@
-(import subprocess)
 (import pywinctl :as pwc)
+(import subprocess)
 (import time)
+(import Xlib)
+
+(setv *disp* (Xlib.display.Display))
+(setv *xatoms* {})
 
 ;; UTILS
 
@@ -14,6 +18,15 @@
 (defn not-yet-implemented [fn-name]
   (print f"WARNING: Call to function '{fn-name}' which is not yet implemented."))
 
+(defn window-xprop-value [prop_name]
+  "Returns the given property of the window, e.g. pass '_NET_WM_STATE' (String)."
+  (when (not (in prop_name *xatoms*))
+    (setv (. *xatoms* [prop_name]) (*disp*.intern_atom prop_name)))
+  (setv xprop (*current-xwindow*.get_full_property
+                (. *xatoms* [prop_name])
+                Xlib.X.AnyPropertyType))
+  (. xprop.value [0]))
+
 ;; DEVILSPIE FUNCTIONS/MACROS
 
 (defmacro begin [&rest args]
@@ -21,7 +34,7 @@
 
 (defn application_name []
   "Return the application name (as determined by libwnck) of the current window (String)."
-  (not-yet-implemented "application_name"))
+  (*current-window*.getAppName))
 
 (defn above []
   "Set the current window to be above all normal windows (returns TRUE)."
@@ -132,7 +145,7 @@
 (defn spawn_sync [#*cmd]
   "Execute  a  command in the foreground (returns command output as string, or FALSE on error). Command is given as a single string, or as a series of strings (similar to execl)."
   (print "SPAWN" (concat #*cmd))
-  (. (subprocess.run ["bash" "-c" (concat #*cmd)] stdout=subprocess.PIPE) stdout))
+  (. (subprocess.run ["bash" "-c" (concat #*cmd)] :stdout subprocess.PIPE) stdout))
 
 (defn stick []
   "Make the current window stick to all viewports (returns TRUE)."
@@ -174,19 +187,21 @@
   "Return the title of the current window (String)."
   (str (*current-xwindow*.get_wm_name)))
 
-(defn window_property [prop]
+(defn window_property [prop-name]
   "Returns the given property of the window, e.g. pass '_NET_WM_STATE' (String)."
-  ; "_NET_WM_WINDOW_TYPE "
-;  (*current-xwindow*.get_property prop "String" 0 32))
-  (not-yet-implemented "window_property"))
+  (when (not (in prop-name *xatoms*))
+    (setv (. *xatoms* [prop-name]) (*disp*.intern_atom prop_name)))
+  (setv xprop-value (window-xprop-value prop-name))
+  (*disp*.get_atom_name xprop-value))
 
 (defn window_role []
   "Return the role (as determined by the WM_WINDOW_ROLE hint) of the current window (String)."
+  ;(*current-xwindow*.get_wm_hints)
   (not-yet-implemented "window_role"))
 
 (defn window_workspace []
   "Returns the workspace a window is on (Integer)."
-  (not-yet-implemented "window_workspace"))
+  (window-xprop-value "_NET_WM_DESKTOP"))
 
 (defn window_xid []
   "Return the X11 window id of the current window (Integer)."
@@ -204,7 +219,9 @@
     ; (import pprint)
     ; (pprint.pprint (dir *current-window*))
     ; (pprint.pprint (dir *current-xwindow*))
+    ; (pprint.pprint (*current-xwindow*.get_wm_hints))
       (debug)
+      (print (window_property "_NET_WM_WINDOW_TYPE"))
       (hy.eval (hy.read-many (open "/home/arno/.devilspie/arno_new.ds")))
       (setv (. *known-xwindows* [*current-xwindow*]) True)))
   (time.sleep 0.1))
