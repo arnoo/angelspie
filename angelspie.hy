@@ -2,14 +2,38 @@
 (import pywinctl :as pwc)
 (import time)
 
+;; UTILS
+
+(defn add_state_prop [prop]
+  (spawn_async (concat "wmctrl -i -r " (window_xid) " -b add " prop)))
+
+(defn concat [#*args]
+  "Transform parameters into strings and concat them."
+  (. " " (join (list (map str args)))))
+
 (defn not-yet-implemented [fn-name]
   (print f"WARNING: Call to function '{fn-name}' which is not yet implemented."))
+
+;; DEVILSPIE FUNCTIONS/MACROS
 
 (defmacro begin [&rest args]
   `(do ~args))
 
+(defn application_name []
+  "Return the application name (as determined by libwnck) of the current window (String)."
+  (not-yet-implemented "application_name"))
+
+(defn above []
+  "Set the current window to be above all normal windows (returns TRUE)."
+  (not-yet-implemented "above"))
+
 (defn below []
+  "Set the current window to be below all normal windows (returns TRUE)."
   (pwc.lowerWindow *current-window*))
+
+(defn center []
+  "enter position of current window (returns boolean)."
+  (not-yet-implemented "center"))
 
 (defn close []
   "Close the current window (returns TRUE)."
@@ -19,13 +43,21 @@
   "True if string contains substring."
   (in substring string))
 
-(defn matches [string pattern]
-  "True if the regexp pattern matches str"
-  (not-yet-implemented "matches"))
+(defn debug []
+  "Debugging function, outputs the current window's title, name, role and geometry (Returns TRUE)."
+  (print f"Window Title: {(window_name)}; Application Name: '{(application_name)}'; Class: '{(window_class)}'; Geometry: {*current-window*.width}x{*current-window*.height}+{*current-window*.left}+{*current-window*.top}"))
+
+(defn decorate []
+  "Add the window manager decorations to the current window (returns boolean)."
+  (not-yet-implemented "decorate"))
 
 (defn focus []
   "Focus the current window (returns TRUE)."
   (*current-window*.activate))
+
+(defn fullscreen []
+  "Make the current window fullscreen (returns TRUE)."
+  (not-yet-implemented "fullscreen"))
 
 (defn geometry [geom-str]
   "Set position + size (as string) of current window (returns boolean)."
@@ -40,16 +72,53 @@
     (setv [x y] (pos.split "+"))
     (pwc.moveTo *current-window* x y)))
 
-(defn is [a b]
-  "String equality, (is a b) means a is the same as b."
-  (== a b))
+(defn hex []
+  "Transform the integer parameter into an unsigned hexadecimal string (with 0x prefix)."
+  (not-yet-implemented "hex"))
+
+(defn matches [string pattern]
+  "True if the regexp pattern matches str"
+  (not-yet-implemented "matches"))
+
+(defn opacity []
+  "Change the opacity level (as integer in 0..100) of the current window (returns boolean)."
+  (not-yet-implemented "opacity"))
+
+(defn maximize []
+  "Maximise the current window (returns TRUE)."
+  (not-yet-implemented "maximize"))
+
+(defn maximize_vertically []
+  "Maximise vertically the current window (returns TRUE)."
+  (not-yet-implemented "maximize_vertically"))
+
+(defn maximize_horizontally []
+  "Maximise horizontally the current window (returns TRUE)."
+  (not-yet-implemented "maximize_horizontally"))
+
+(defn minimize []
+  "Minimise the current window (returns TRUE)."
+  (not-yet-implemented "minimize"))
+
+(defn pin []
+  "Pin the current window to all workspaces (returns TRUE)."
+  (not-yet-implemented "pin"))
+
+(defn set_viewport []
+  "Move the window to a specific viewport number, counting from 1 (returns boolean)."
+  (not-yet-implemented "set_viewport"))
 
 (defn set_workspace [workspace-nb]
   "Move the window to a specific workspace number, counting from 1 (returns boolean)."
   (spawn_async (concat "wmctrl -i -r " (window_xid) " -t " (- workspace-nb 1))))
 
-(defn add_state_prop [prop]
-  (spawn_async (concat "wmctrl -i -r " (window_xid) " -b add " prop)))
+(defn shade []
+  "Shade ('roll up') the current window (returns TRUE)."
+  (not-yet-implemented "shade"))
+
+(defn skip_pager []
+  "Remove the current window from the window list (returns TRUE)."
+  (not-yet-implemented "skip_pager"))
 
 (defn skip_tasklist []
   "Remove the current window from the pager (returns TRUE)."
@@ -65,17 +134,41 @@
   (print "SPAWN" (concat #*cmd))
   (. (subprocess.run ["bash" "-c" (concat #*cmd)] stdout=subprocess.PIPE) stdout))
 
-(defn concat [#*args]
-  "Transform parameters into strings and concat them."
-  (. " " (join (list (map str args)))))
+(defn stick []
+  "Make the current window stick to all viewports (returns TRUE)."
+  (not-yet-implemented "stick"))
 
 (defn undecorate []
   "Remove the window manager decorations from the current window (returns boolean)."
   (spawn_async (concat "xprop -id " (window_xid) " -format _MOTIF_WM_HINTS 32c -set _MOTIF_WM_HINTS 2")))
 
+(defn unmaximize []
+  "Un-maximise the current window (returns TRUE)."
+  (not-yet-implemented "unmaximize"))
+
+(defn unminimize []
+  "Un-minimise the current window (returns TRUE)."
+  (not-yet-implemented "unminimize"))
+
+(defn unpin []
+  "Unpin the current window from all workspaces (returns TRUE)."
+  (not-yet-implemented "unpin"))
+
+(defn unshade []
+  "Un-shade ('roll down') the current window (returns TRUE)."
+  (not-yet-implemented "unshade"))
+
+(defn unstick []
+  "Unstick the window from viewports (returns TRUE)."
+  (not-yet-implemented "unstick"))
+
+(defn wintype [type]
+  "Set the window type of the current window (returns boolean). Accepted values are: normal, dialog, menu, toolbar, splashscreen, utility, dock, desktop."
+  (not-yet-implemented "wintype"))
+
 (defn window_class []
   "Return the class of the current window (String)."
-  (. (*current-xwindow*.get_wm_class) [0]))
+  (. (*current-xwindow*.get_wm_class) [1]))
 
 (defn window_name []
   "Return the title of the current window (String)."
@@ -87,117 +180,19 @@
 ;  (*current-xwindow*.get_property prop "String" 0 32))
   (not-yet-implemented "window_property"))
 
-(defn window_xid []
-  "Return the X11 window id of the current window (Integer)."
-  *current-xwindow*.id)
-
-(defn wintype [type]
-  "Set the window type of the current window (returns boolean). Accepted values are: normal, dialog, menu, toolbar, splashscreen, utility, dock, desktop."
-  (not-yet-implemented "wintype"))
-
-(defn println [str]
-  "Print args (with trailing 0 returns boolean)."
-  (not-yet-implemented "println"))
-
 (defn window_role []
   "Return the role (as determined by the WM_WINDOW_ROLE hint) of the current window (String)."
   (not-yet-implemented "window_role"))
-
-(defn application_name []
-  "Return the application name (as determined by libwnck) of the current window (String)."
-  (not-yet-implemented "application_name"))
 
 (defn window_workspace []
   "Returns the workspace a window is on (Integer)."
   (not-yet-implemented "window_workspace"))
 
-(defn debug []
-  "Debugging function, outputs the current window's title, name, role and geometry (Returns TRUE)."
-  (not-yet-implemented "debug"))
+(defn window_xid []
+  "Return the X11 window id of the current window (Integer)."
+  *current-xwindow*.id)
 
-(defn hex []
-  "Transform the integer parameter into an unsigned hexadecimal string (with 0x prefix)."
-  (not-yet-implemented "hex"))
-
-(defn skip_pager []
-  "Remove the current window from the window list (returns TRUE)."
-  (not-yet-implemented "skip_pager"))
-
-(defn above []
-  "Set the current window to be above all normal windows (returns TRUE)."
-  (not-yet-implemented "above"))
-
-(defn below []
-  "Set the current window to be below all normal windows (returns TRUE)."
-  (not-yet-implemented "below"))
-
-(defn decorate []
-  "Add the window manager decorations to the current window (returns boolean)."
-  (not-yet-implemented "decorate"))
-
-(defn opacity []
-  "Change the opacity level (as integer in 0..100) of the current window (returns boolean)."
-  (not-yet-implemented "opacity"))
-
-(defn stick []
-  "Make the current window stick to all viewports (returns TRUE)."
-  (not-yet-implemented "stick"))
-
-(defn unstick []
-  "Unstick the window from viewports (returns TRUE)."
-  (not-yet-implemented "unstick"))
-
-(defn minimize []
-  "Minimise the current window (returns TRUE)."
-  (not-yet-implemented "minimize"))
-
-(defn unminimize []
-  "Un-minimise the current window (returns TRUE)."
-  (not-yet-implemented "unminimize"))
-
-(defn shade []
-  "Shade ('roll up') the current window (returns TRUE)."
-  (not-yet-implemented "shade"))
-
-(defn unshade []
-  "Un-shade ('roll down') the current window (returns TRUE)."
-  (not-yet-implemented "unshade"))
-
-(defn center []
-  "enter position of current window (returns boolean)."
-  (not-yet-implemented "center"))
-
-(defn maximize []
-  "Maximise the current window (returns TRUE)."
-  (not-yet-implemented "maximize"))
-
-(defn maximize_vertically []
-  "Maximise vertically the current window (returns TRUE)."
-  (not-yet-implemented "maximize_vertically"))
-
-(defn maximize_horizontally []
-  "Maximise horizontally the current window (returns TRUE)."
-  (not-yet-implemented "maximize_horizontally"))
-
-(defn unmaximize []
-  "Un-maximise the current window (returns TRUE)."
-  (not-yet-implemented "unmaximize"))
-
-(defn pin []
-  "Pin the current window to all workspaces (returns TRUE)."
-  (not-yet-implemented "pin"))
-
-(defn unpin []
-  "Unpin the current window from all workspaces (returns TRUE)."
-  (not-yet-implemented "unpin"))
-
-(defn fullscreen []
-  "Make the current window fullscreen (returns TRUE)."
-  (not-yet-implemented "fullscreen"))
-
-(defn set_viewport []
-  "Move the window to a specific viewport number, counting from 1 (returns boolean)."
-  (not-yet-implemented "set_viewport"))
+;; MAIN LOOP
 
 (setv *known-xwindows* {})
 
@@ -209,8 +204,7 @@
     ; (import pprint)
     ; (pprint.pprint (dir *current-window*))
     ; (pprint.pprint (dir *current-xwindow*))
-      (print "window_name:" (window_name))
-      (print "window_class:" (window_class))
+      (debug)
       (hy.eval (hy.read-many (open "/home/arno/.devilspie/arno_new.ds")))
       (setv (. *known-xwindows* [*current-xwindow*]) True)))
   (time.sleep 0.1))
