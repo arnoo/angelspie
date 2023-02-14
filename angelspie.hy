@@ -1,4 +1,8 @@
+(import glob)
+(import os)
+(import pathlib)
 (import pywinctl :as pwc)
+(import re)
 (import subprocess)
 (import time)
 (import Xlib)
@@ -8,9 +12,22 @@
 ;; UTILS
 
 (defn add_state_prop [prop]
-  (spawn_async (concat "wmctrl -i -r " (window_xid) " -b add " prop)))
+  (spawn_async (str+ "wmctrl -i -r " (window_xid) " -b add " prop)))
 
-(defn concat [#*args]
+(defn build-config []
+  (print (os.path.join (pathlib.Path.home) ".devilspie/*.ds"))
+  (for [ds-file (glob.glob (os.path.join (pathlib.Path.home) ".devilspie/*.ds"))]
+    (print f"Loading config from '{ds-file}'")
+    (with [ds-handle (open ds-file)]
+      (setv script (ds-handle.read)))
+    (setv script (script.replace "(if " "(when "))
+    (setv script (script.replace "(is " "(= "))
+    (setv script (script.replace "(str " "(str+ "))
+    (setv as-file (re.sub "\\.ds$" ".as" ds-file))
+    (with [as-handle (open as-file "w")]
+      (as-handle.write script))))
+
+(defn str+ [#*args]
   "Transform parameters into strings and concat them."
   (. " " (join (list (map str args)))))
 
@@ -137,13 +154,13 @@
 
 (defn spawn_async [#*cmd]
   "Execute a command in the background (returns boolean). Command is given as a single string, or as a series of strings (similar to execl)."
-  (print "SPAWN ASYNC" (concat #*cmd))
-  (subprocess.Popen ["bash" "-c" (concat #*cmd)]))
+  (print "spawn_async" (str+ #*cmd))
+  (subprocess.Popen ["bash" "-c" (str+ #*cmd)]))
 
 (defn spawn_sync [#*cmd]
   "Execute  a  command in the foreground (returns command output as string, or FALSE on error). Command is given as a single string, or as a series of strings (similar to execl)."
-  (print "SPAWN" (concat #*cmd))
-  (. (subprocess.run ["bash" "-c" (concat #*cmd)] :stdout subprocess.PIPE) stdout))
+  (print "spawn" (str+ #*cmd))
+  (. (subprocess.run ["bash" "-c" (str+ #*cmd)] :stdout subprocess.PIPE) stdout))
 
 (defn stick []
   "Make the current window stick to all viewports (returns TRUE)."
@@ -211,6 +228,7 @@
 
 (setv *known-xwindows* {})
 
+(build-config)
 (while True
   (for [window (pwc.getAllWindows)]
     (setv *current-window* window)
@@ -221,7 +239,7 @@
     ; (pprint.pprint (dir *current-xwindow*))
     ; (pprint.pprint (*current-xwindow*.get_wm_hints))
       (debug)
-      (print (window_property "_NET_WM_WINDOW_TYPE"))
-      (hy.eval (hy.read-many (open "/home/arno/.devilspie/arno_new.ds")))
+      (for [as-file (glob.glob (os.path.join (pathlib.Path.home) ".devilspie/*.as"))]
+        (hy.eval (hy.read-many (open as-file))))
       (setv (. *known-xwindows* [*current-xwindow*]) True)))
   (time.sleep 0.1))
