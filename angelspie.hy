@@ -53,11 +53,13 @@
 
 (defn above []
   "Set the current window to be above all normal windows (returns TRUE)."
-  (*current-window*.alwaysOnTop))
+  (*current-window*.alwaysOnTop)
+  True)
 
 (defn below []
   "Set the current window to be below all normal windows (returns TRUE)."
-  (*current-window*.alwaysOnBottom))
+  (*current-window*.alwaysOnBottom)
+  True)
 
 (defn center []
   "Center position of current window (returns boolean)."
@@ -65,7 +67,8 @@
 
 (defn close []
   "Close the current window (returns TRUE)."
-  (*current-window*close))
+  (*current-window*close)
+  True)
 
 (defn contains [string substring]
   "True if string contains substring."
@@ -73,7 +76,8 @@
 
 (defn debug []
   "Debugging function, outputs the current window's title, name, role and geometry (Returns TRUE)."
-  (print f"Window Title: {(window_name)}; Application Name: '{(application_name)}'; Class: '{(window_class)}'; Geometry: {*current-window*.width}x{*current-window*.height}+{*current-window*.left}+{*current-window*.top}"))
+  (print f"Window Title: {(window_name)}; Application Name: '{(application_name)}'; Class: '{(window_class)}'; Geometry: {*current-window*.width}x{*current-window*.height}+{*current-window*.left}+{*current-window*.top}")
+  True)
 
 (defn decorate []
   "Add the window manager decorations to the current window (returns boolean)."
@@ -81,11 +85,13 @@
 
 (defn focus []
   "Focus the current window (returns TRUE)."
-  (*current-window*.activate))
+  (*current-window*.activate)
+  True)
 
 (defn fullscreen []
   "Make the current window fullscreen (returns TRUE)."
-  (not-yet-implemented "fullscreen"))
+  (not-yet-implemented "fullscreen")
+  True)
 
 (defn geometry [geom-str]
   "Set position + size (as string) of current window (returns boolean)."
@@ -110,23 +116,28 @@
 
 (defn maximize []
   "Maximise the current window (returns TRUE)."
-  (*current-window*.maximize))
+  (*current-window*.maximize)
+  True)
 
 (defn maximize_vertically []
   "Maximise vertically the current window (returns TRUE)."
-  (not-yet-implemented "maximize_vertically"))
+  (not-yet-implemented "maximize_vertically")
+  True)
 
 (defn maximize_horizontally []
   "Maximise horizontally the current window (returns TRUE)."
-  (not-yet-implemented "maximize_horizontally"))
+  (not-yet-implemented "maximize_horizontally")
+  True)
 
 (defn minimize []
   "Minimise the current window (returns TRUE)."
-  (*current-window*.minimize))
+  (*current-window*.minimize)
+  True)
 
 (defn pin []
   "Pin the current window to all workspaces (returns TRUE)."
-  (not-yet-implemented "pin"))
+  (not-yet-implemented "pin")
+  True)
 
 (defn set_viewport [viewport-nb]
   "Move the window to a specific viewport number, counting from 1 (returns boolean)."
@@ -142,15 +153,18 @@
 
 (defn shade []
   "Shade ('roll up') the current window (returns TRUE)."
-  (not-yet-implemented "shade"))
+  (not-yet-implemented "shade")
+  True)
 
 (defn skip_pager []
   "Remove the current window from the window list (returns TRUE)."
-  (not-yet-implemented "skip_pager"))
+  (not-yet-implemented "skip_pager")
+  True)
 
 (defn skip_tasklist []
   "Remove the current window from the pager (returns TRUE)."
-  (add_state_prop "skip_taskbar"))
+  (add_state_prop "skip_taskbar")
+  True)
 
 (defn spawn_async [#*cmd]
   "Execute a command in the background (returns boolean). Command is given as a single string, or as a series of strings (similar to execl)."
@@ -176,23 +190,28 @@
 
 (defn unmaximize []
   "Un-maximise the current window (returns TRUE)."
-  (not-yet-implemented "unmaximize"))
+  (not-yet-implemented "unmaximize")
+  True)
 
 (defn unminimize []
   "Un-minimise the current window (returns TRUE)."
-  (not-yet-implemented "unminimize"))
+  (not-yet-implemented "unminimize")
+  True)
 
 (defn unpin []
   "Unpin the current window from all workspaces (returns TRUE)."
-  (not-yet-implemented "unpin"))
+  (not-yet-implemented "unpin")
+  True)
 
 (defn unshade []
   "Un-shade ('roll down') the current window (returns TRUE)."
-  (not-yet-implemented "unshade"))
+  (not-yet-implemented "unshade")
+  True)
 
 (defn unstick []
   "Unstick the window from viewports (returns TRUE)."
-  (not-yet-implemented "unstick"))
+  (not-yet-implemented "unstick")
+  True)
 
 (defn wintype [type]
   "Set the window type of the current window (returns boolean). Accepted values are: normal, dialog, menu, toolbar, splashscreen, utility, dock, desktop."
