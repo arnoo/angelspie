@@ -1,4 +1,21 @@
+; Copyright © 2023 Arnaud Bétrémieux <arnaud@btmx.fr>
+
+; This program is free software: you can redistribute it and/or modify
+; it under the terms of the GNU General Public License as published by
+; the Free Software Foundation, either version 3 of the License, or
+; (at your option) any later version.
+
+; This program is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU General Public License for more details.
+
+; You should have received a copy of the GNU General Public License
+; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+(import argparse)
 (import glob)
+(import math)
 (import os)
 (import pathlib)
 (import pywinctl :as pwc)
@@ -8,28 +25,57 @@
 (import Xlib)
 
 (setv *disp* (Xlib.display.Display))
+(setv +config-dir+ (os.path.join (pathlib.Path.home) ".config/angelspie"))
 
 ;; UTILS
 
 (defn add_state_prop [prop]
-  (spawn_async (str+ "wmctrl -i -r " (window_xid) " -b add " prop)))
+  (spawn_async "wmctrl" "-i" "-r" (window_xid) "-b" (+ "add," prop)))
 
-(defn build-config []
-  (print (os.path.join (pathlib.Path.home) ".devilspie/*.ds"))
-  (for [ds-file (glob.glob (os.path.join (pathlib.Path.home) ".devilspie/*.ds"))]
-    (print f"Loading config from '{ds-file}'")
-    (with [ds-handle (open ds-file)]
-      (setv script (ds-handle.read)))
-    (setv script (script.replace "(if " "(when "))
-    (setv script (script.replace "(is " "(= "))
-    (setv script (script.replace "(str " "(str+ "))
-    (setv as-file (re.sub "\\.ds$" ".as" ds-file))
-    (with [as-handle (open as-file "w")]
-      (as-handle.write script))))
+(defn remove-state-prop [prop]
+  (spawn_async "wmctrl" "-i" "-r" (window_xid) "-b" (+ "remove," prop)))
+
+(defn parse-command-line []
+  (setv parser (argparse.ArgumentParser :description "Act on windows when created"))
+  (.add-argument parser
+                 "--eval"
+                 :default []
+                 :help "as code to eval. Disables loading of config files, happens after processing conf_file arguments."
+                 :metavar "AS_CODE"
+                 :nargs "*")
+  (.add-argument parser
+                 "--load"
+                 :default []
+                 :help "as script to run for each window (by default ~/.config/angelspie/*.as)"
+                 :metavar "LOAD_FILE"
+                 :nargs "*")
+  (.parse-args parser))
+
+(defn try-to-build-config-from-devilspie-if-we-have-none []
+  (when (not (glob.glob (os.path.join +config-dir+ "*.as")))
+    (os.mkdir +config-dir+)
+    (for [ds-file (glob.glob (os.path.join (pathlib.Path.home) ".devilspie/*.ds"))]
+      (print f"Importing config from '{ds-file}'")
+      (with [ds-handle (open ds-file)]
+        (setv script (ds-handle.read)))
+      (setv script (script.replace "(if " "(dsif "))
+      (setv script (script.replace "(is " "(= "))
+      (setv script (script.replace "(str " "(str+ "))
+      (setv as-file (re.sub "\\.ds$" ".as" ds-file))
+      (setv as-file (re.sub "^.*/\\.devilspie" (str +config-dir+) as-file))
+      (with [as-handle (open as-file "w")]
+        (as-handle.write script)))))
 
 (defn str+ [#*args]
-  "Transform parameters into strings and concat them."
+  "Transform parameters into strings and concat them with spaces in between."
   (. " " (join (list (map str args)))))
+
+(defn screens-hash []
+  (setv screens-dict (pwc.getAllScreens))
+  (setv hash "")
+  (for [key (screens-dict.keys)]
+    (setv hash (str+ hash key (get (get screens-dict key) "size"))))
+  hash)
 
 (defn not-yet-implemented [fn-name]
   (print f"WARNING: Call to function '{fn-name}' which is not yet implemented."))
@@ -40,7 +86,15 @@
         (*current-xwindow*.get_full_property
           (*disp*.intern_atom prop_name)
           Xlib.X.AnyPropertyType))
-  (. xprop.value [0]))
+  (when xprop
+    (. xprop.value [0])))
+
+(defn dimension-to-pixels [dimension [is-vertical False]]
+  (if (.endswith (str dimension) "%")
+      (math.floor (/ (* (int (get (str dimension) (slice 0 -1)))
+                        (if is-vertical (screen-height) (screen-width)))
+                     100))
+      (int dimension)))
 
 ;; DEVILSPIE FUNCTIONS/MACROS
 
@@ -83,6 +137,11 @@
   "Add the window manager decorations to the current window (returns boolean)."
   (not-yet-implemented "decorate"))
 
+(defmacro dsif [cond-clause then-clause [else-clause None]]
+  `(if ~cond-clause
+       ~then-clause
+       ~(when else-clause else-clause)))
+
 (defn focus []
   "Focus the current window (returns TRUE)."
   (*current-window*.activate)
@@ -96,15 +155,17 @@
 (defn geometry [geom-str]
   "Set position + size (as string) of current window (returns boolean)."
   (if (in "+" geom-str)
-    (do (setv parts (geom-str.split "+"))
+    (do (setv parts (geom-str.split "+" 1))
         (setv size (. parts [0]))
         (setv pos (. parts [1])))
     (setv size geom-str))
-  (setv [width height] (geom-str.split "x"))
-  (*current-window*.resizeTo width height)
+  (setv [width height] (size.split "x"))
+  (*current-window*.resizeTo (dimension-to-pixels width)
+                             (dimension-to-pixels height :is-vertical True))
   (when pos
     (setv [x y] (pos.split "+"))
-    (*current-window*.moveTo x y)))
+    (*current-window*.moveTo (dimension-to-pixels x)
+                             (dimension-to-pixels y :is-vertical True))))
 
 (defn matches [string pattern]
   "True if the regexp pattern matches str"
@@ -145,20 +206,21 @@
 
 (defn set_workspace [workspace-nb]
   "Move the window to a specific workspace number, counting from 1 (returns boolean)."
-  (*current-xwindow*.change_property
-    (*disp*.intern_atom "_NET_WM_DESKTOP")
-    Xlib.Xatom.CARDINAL
-    32
-    [(- workspace-nb 1) 0x0 0x0 0x0]))
+  ;(*current-xwindow*.change_property
+  ;  (*disp*.intern_atom "_NET_WM_DESKTOP")
+  ;  Xlib.Xatom.CARDINAL
+  ;  32
+  ;  [(- workspace-nb 1) 0x0 0x0 0x0]))
+  (spawn_async "wmctrl" "-i" "-r" (window_xid) "-t" (- workspace-nb 1))))
 
 (defn shade []
   "Shade ('roll up') the current window (returns TRUE)."
-  (not-yet-implemented "shade")
+  (add_state_prop "shaded")
   True)
 
 (defn skip_pager []
   "Remove the current window from the window list (returns TRUE)."
-  (not-yet-implemented "skip_pager")
+  (add_state_prop "skip_pager")
   True)
 
 (defn skip_tasklist []
@@ -190,7 +252,7 @@
 
 (defn unmaximize []
   "Un-maximise the current window (returns TRUE)."
-  (not-yet-implemented "unmaximize")
+  (remove-state-prop "maximized_vert,maximized_horz")
   True)
 
 (defn unminimize []
@@ -205,7 +267,7 @@
 
 (defn unshade []
   "Un-shade ('roll down') the current window (returns TRUE)."
-  (not-yet-implemented "unshade")
+  (remove_state_prop "shaded")
   True)
 
 (defn unstick []
@@ -228,7 +290,8 @@
 (defn window_property [prop-name]
   "Returns the given property of the window, e.g. pass '_NET_WM_STATE' (String)."
   (setv xprop-value (window-xprop-value prop-name))
-  (*disp*.get_atom_name xprop-value))
+  (when xprop-value
+    (*disp*.get_atom_name xprop-value)))
 
 (defn window_role []
   "Return the role (as determined by the WM_WINDOW_ROLE hint) of the current window (String)."
@@ -243,22 +306,110 @@
   "Return the X11 window id of the current window (Integer)."
   *current-xwindow*.id)
 
-;; MAIN LOOP
+;; ADDITIONS TO DEVILSPIE
 
-(setv *known-xwindows* {})
+(defn tile [direction [screen-margin-top 0]
+                      [screen-margin-bottom 0]
+                      [screen-margin-left 0]
+                      [screen-margin-right 0]
+                      [window-margin-horizontal 0]
+                      [window-margin-vertical 0]]
+  (unmaximize)
+  (setv x screen-margin-left)
+  (setv y screen-margin-top)
+  (setv w (- (screen_width)
+             (dimension-to-pixels screen-margin-right)
+             (dimension-to-pixels screen-margin-left)))
+  (setv h (- (screen_height)
+             (dimension-to-pixels screen-margin-top :is-vertical True)
+             (dimension-to-pixels screen-margin-bottom :is-vertical True)))
+  (when (in "left" direction)
+    (setv x screen-margin-left))
+  (when (in "right" direction)
+    (setv x (+ (dimension-to-pixels "50%")
+               (math.floor (/ (dimension-to-pixels window-margin-horizontal) 2)))))
+  (when (or (in "left" direction)
+            (in "right" direction))
+    (setv w (math.floor (- (/ w 2)
+                           (/ (dimension-to-pixels window-margin-horizontal) 2)))))
+  (when (in "bottom" direction)
+    (setv y (- (dimension-to-pixels "50%" :is-vertical True)
+               (dimension-to-pixels screen-margin-bottom* :is-vertical True)
+               (math.floor (/ (dimension-to-pixels window-margin-vertical :is-vertical True) 2)))))
+  (when (in "top" direction)
+    (setv y screen-margin-top))
+  (when (in "center" direction)
+    (setv y "25%")
+    (setv h "45%"))
+  (when (or (in "bottom" direction)
+            (in "top" direction))
+    (setv h (math.floor (- (/ h 2)
+                           (/ (dimension-to-pixels window-margin-vertical) 2)))))
+  ; (print "TILE " (.join "" [(str x) "x" (str y) "+" (str w) "+" (str h)]))
+  (*current-window*.resizeTo (dimension-to-pixels w)
+                             (dimension-to-pixels h :is-vertical True))
+  (*current-window*.moveTo (dimension-to-pixels x)
+                           (dimension-to-pixels y :is-vertical True)))
 
-(build-config)
-(while True
-  (for [window (pwc.getAllWindows)]
-    (setv *current-window* window)
-    (setv *current-xwindow* (window.getHandle))
-    (when (not (in *current-xwindow* *known-xwindows*))
-    ; (import pprint)
-    ; (pprint.pprint (dir *current-window*))
-    ; (pprint.pprint (dir *current-xwindow*))
-    ; (pprint.pprint (*current-xwindow*.get_wm_hints))
-      (debug)
-      (for [as-file (glob.glob (os.path.join (pathlib.Path.home) ".devilspie/*.as"))]
-        (hy.eval (hy.read-many (open as-file))))
-      (setv (. *known-xwindows* [*current-xwindow*]) True)))
-  (time.sleep 0.1))
+(defn screen_height []
+  (setv screen-size (pwc.getScreenSize (*current-window*.getDisplay)))
+  screen-size.height)
+
+(defn screen_width []
+  (setv screen-size (pwc.getScreenSize (*current-window*.getDisplay)))
+  screen-size.width)
+  
+(defn window-index-in-class []
+  (setv index 0)
+  (for [w (sorted (pwc.getAllWindows) :key (fn [ww] (str (ww.getHandle))))]
+     (when (= (. (.get_wm_class (w.getHandle)) [1])
+              (window_class))
+       (when (= (w.getHandle) *current-xwindow*)
+         (break))
+       (setv index (+ index 1))))
+  index)
+
+;; MAIN
+
+(defn process-window [window]
+  (global *current-window*)
+  (global *current-xwindow*)
+  (setv *current-window* window)
+  (setv *current-xwindow* (window.getHandle))
+  (for [as-file (if (or *command-line-args*.load *command-line-args*.eval)
+                    *command-line-args*.load
+                    (sorted (glob.glob (os.path.join +config-dir+ "*.as"))))]
+    (print "== Running" as-file)
+    (hy.eval (hy.read-many (open as-file))))
+  (for [eval-str *command-line-args*.eval]
+    (hy.eval (hy.read-many eval-str))))
+
+(defn main-loop []
+  (try-to-build-config-from-devilspie-if-we-have-none)
+  (when (and (not (glob.glob (os.path.join +config-dir+ "*.as")))
+             (not *command-line-args*.load))
+    (print "No configuration file found and none specified in command-line")
+    (return))
+  (setv *last-screens-hash* "")
+  (while True
+    (setv new-screens-hash (screens-hash))
+    (when (not (= new-screens-hash *last-screens-hash*))
+      (when (not (= *last-screens-hash* ""))
+        (print "Screen configuration changed, rerunning configuration scripts for all windows"))
+      (setv *last-screens-hash* new-screens-hash)
+      (setv *known-xwindows* {}))
+    (for [w (*known-xwindows*.keys)]
+      (setv (. *known-xwindows* [w]) False))
+    (for [window (pwc.getAllWindows)]
+      (when (not (in (window.getHandle) *known-xwindows*))
+        (process-window window))
+      (setv (. *known-xwindows* [(window.getHandle)]) True))
+    (for [w (list (*known-xwindows*.keys))]
+       (when (not (. *known-xwindows* [w]))
+          (del (. *known-xwindows* [w]))))
+    (time.sleep 0.2)))
+
+(setv *command-line-args* (parse-command-line))
+(if *command-line-args*.eval
+  (process-window (pwc.getActiveWindow))
+  (main-loop))
