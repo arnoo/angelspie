@@ -1,10 +1,10 @@
-This is a tool to apply rules to windows on Linux: placement, workspace, tiling, decorations… based on window name, class, role…
+Angelspie is a tool to apply rules to windows on Linux: placement, workspace, tiling, decorations… based on window name, class, role…
 
-This is intended as a drop-in replacement for devilspie which is unmaintained and now segfaults way too often.
+Angelspie is intended as a drop-in replacement for Devilspie which is unmaintained and now segfaults way too often.
 
-Compared to devilspie, Angelspie has some added functionality for tiling. It also repositions windows when display configuration changes (screen added or removed for instance).
+Compared to Devilspie, Angelspie has some added functionality for tiling. It also repositions windows when display configuration changes (screen added or removed for instance).
 
-If you start angelspie and no configuration files exist, it will build configuration files based on your devilspie config if you have one. 
+If you start Angelspie and no configuration files exist, it will build configuration files based on your Devilspie config if you have one. 
 
 ## Configuration
 
@@ -33,12 +33,23 @@ Angelspie is written in [hy](http://hylang.org/). Any hy function or macro can b
 
 ## Devilspie compatibility
 
-The devilspie functions I was not using are not implemented but should not be too hard to hack based on the others. You'll get a warning when yoir configuration script calls an undefined function. I welcome pull requests in the hope of making this at some point a complete drop-in replacement for devilspie.
+In `.as` files, there are a few changes from Devilspie syntax made to avoid ugly redefinitions of hy/python reserved words:
+- `if` has been renamed `dsif` (for Devilspie `if`). The difference with hy's builtin `if` is that the else clause is optional in `dsif`
+- `is` is removed in favor of hy/python's built-in `=`
+- `print` has been renamed `dsprint`
+- `str` has been renamed `str+`
 
-In `.as` files, there are a few changes from devilspie syntax made to avoid ugly redefinitions of hy/python reserved words:
-- if has been renamed dsif (devilspie if). The difference with hy's builtin if is that the else clause is optional in dsif
-- str has been renamed str+
-- is has been renamed =
+The following Devilspie functions are as of yet unimplemented:
+- `center`
+- `opacity`
+- `set_viewport`
+- `stick`
+- `unstick`
+- `wintype`
+- `window_role`
+
+ You'll get a warning when your configuration script calls an undefined function. I welcome pull requests in the hope of making this at some point a complete drop-in replacement for Devilspie.
+
 
 ## Running
 
@@ -47,7 +58,7 @@ To run, use `pipenv run hy angelspie.hy` in the source directory.
 
 ## Command line use
 
-I have this bound to Super+Left in my desktop environment:
+I have this bound to Super+Right in my desktop environment:
 `pipenv run hy angelspie.hy --load=${HOME}/.config/angelspie/00-screen-conf.as --eval='(my-tile "right")'`
 which will tile the active window right
 
@@ -67,7 +78,7 @@ which will tile the active window right
           :window-margin-horizontal "2%"
           :window-margin-vertical "3%")
     (tile direction 
-          :screen-margin-top 0
+          :screen-margin-top 34 
           :screen-margin-bottom 0
           :screen-margin-left 0
           :screen-margin-right 0

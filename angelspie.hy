@@ -13,12 +13,15 @@
 ; You should have received a copy of the GNU General Public License
 ; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+; TODO: check https://sources.debian.org/src/devilspie/0.23-2/src/actions.c/
+; And maybe use wnck as in original devilspie for missing functions and maybe others ?
+
 (import argparse)
 (import glob)
 (import math)
 (import os)
 (import pathlib)
-(import pywinctl :as pwc)
+(import pywinctl :as pwc) ; In the hope of making things somewhat cross-platform, but does not provide much… will probably reconsider and use Xlib / wnck
 (import re)
 (import subprocess)
 (import time)
@@ -29,7 +32,7 @@
 
 ;; UTILS
 
-(defn add_state_prop [prop]
+(defn add-state-prop [prop]
   (spawn_async "wmctrl" "-i" "-r" (window_xid) "-b" (+ "add," prop)))
 
 (defn remove-state-prop [prop]
@@ -61,6 +64,7 @@
       (setv script (script.replace "(if " "(dsif "))
       (setv script (script.replace "(is " "(= "))
       (setv script (script.replace "(str " "(str+ "))
+      (setv script (script.replace "(print " "(dsprint "))
       (setv as-file (re.sub "\\.ds$" ".as" ds-file))
       (setv as-file (re.sub "^.*/\\.devilspie" (str +config-dir+) as-file))
       (with [as-handle (open as-file "w")]
@@ -68,7 +72,7 @@
 
 (defn str+ [#*args]
   "Transform parameters into strings and concat them with spaces in between."
-  (. " " (join (list (map str args)))))
+  (. "" (join (list (map str args)))))
 
 (defn screens-hash []
   (setv screens-dict (pwc.getAllScreens))
@@ -106,22 +110,22 @@
   (*current-window*.getAppName))
 
 (defn above []
-  "Set the current window to be above all normal windows (returns TRUE)."
+  "Set the current window to be above all normal windows , returns True."
   (*current-window*.alwaysOnTop)
   True)
 
 (defn below []
-  "Set the current window to be below all normal windows (returns TRUE)."
+  "Set the current window to be below all normal windows , returns True."
   (*current-window*.alwaysOnBottom)
   True)
 
 (defn center []
-  "Center position of current window (returns boolean)."
+  "Center position of current window , returns boolean."
   (not-yet-implemented "center"))
 
 (defn close []
-  "Close the current window (returns TRUE)."
-  (*current-window*close)
+  "Close the current window , returns True."
+  (*current-window*.close)
   True)
 
 (defn contains [string substring]
@@ -134,116 +138,156 @@
   True)
 
 (defn decorate []
-  "Add the window manager decorations to the current window (returns boolean)."
-  (not-yet-implemented "decorate"))
+  "Add the window manager decorations to the current window , returns boolean."
+  (*current-xwindow*.change_property
+    (*disp*.intern_atom "_MOTIF_WM_HINTS")
+    (*disp*.intern_atom "_MOTIF_WM_HINTS")
+    32
+    [0x0 0x0 0x0 0x0 0x0]))
 
 (defmacro dsif [cond-clause then-clause [else-clause None]]
   `(if ~cond-clause
        ~then-clause
        ~(when else-clause else-clause)))
 
+(defmacro dsprint [#*args]
+  "Print args without trailing newline, returns boolean."
+  (print #*args :sep ""
+                :end ""
+                :flush True))
+
 (defn focus []
-  "Focus the current window (returns TRUE)."
+  "Focus the current window , returns True."
   (*current-window*.activate)
   True)
 
 (defn fullscreen []
-  "Make the current window fullscreen (returns TRUE)."
-  (not-yet-implemented "fullscreen")
+  "Make the current window fullscreen , returns True."
+  (add-state-prop "fullscreen")
   True)
 
 (defn geometry [geom-str]
-  "Set position + size (as string) of current window (returns boolean)."
-  (if (in "+" geom-str)
-    (do (setv parts (geom-str.split "+" 1))
-        (setv size (. parts [0]))
-        (setv pos (. parts [1])))
-    (setv size geom-str))
-  (setv [width height] (size.split "x"))
-  (*current-window*.resizeTo (dimension-to-pixels width)
-                             (dimension-to-pixels height :is-vertical True))
-  (when pos
-    (setv [x y] (pos.split "+"))
-    (*current-window*.moveTo (dimension-to-pixels x)
-                             (dimension-to-pixels y :is-vertical True))))
+  "Set position + size (as string) of current window , returns boolean.
+   geom-str should be in X-GeometryString format:
+    [=][<width>{xX}<height>][{+-}<xoffset>{+-}<yoffset>]
+   as an extension to the X-GeometryString format, all values
+   can be specified as percentages of screen size.
+   Note that negative positions are considered as 0
+   by the underlying pywinctl library and therefore useless.
+   Examples:
+       (geometry \"400×300+0-22\")
+       (geometry \"640×480\")
+       (geometry \"100%×50%+0+0\")
+       (geometry \"+10%+10%\")"
+  (setv dim_re "\\d+\\%{0,1}")
+  (setv size_re "[+-]\\d+\\%{0,1}")
+  (setv geom-parts
+        (re.match (+ "(=|)"
+                     "((?P<w>" dim_re ")x(?P<h>" dim_re ")|)"
+                     "((?P<x>" size_re ")(?P<y>" size_re ")|)"
+                     "$")
+                  (.lower geom-str)))
+  (when (not geom-parts)
+    (print f"Invalid geometry: {geom-str}")
+    (return False))
+  (when (.group geom-parts "w")
+    (*current-window*.resizeTo (dimension-to-pixels (.group geom-parts "w"))
+                               (dimension-to-pixels (.group geom-parts "h") :is-vertical True)))
+  (when (.group geom-parts "x")
+    (*current-window*.moveTo (dimension-to-pixels (.group geom-parts "x"))
+                             (dimension-to-pixels (.group geom-parts "y") :is-vertical True))))
 
 (defn matches [string pattern]
   "True if the regexp pattern matches str"
-  (not-yet-implemented "matches"))
+  (bool (re.search pattern string)))
 
 (defn opacity [level]
-  "Change the opacity level (as integer in 0..100) of the current window (returns boolean)."
+  "Change the opacity level (as integer in 0..100) of the current window , returns boolean."
+	;v=0xffffffff/100*level;
+	;XChangeProperty (gdk_x11_get_default_xdisplay (), wnck_window_get_xid(c->window),
+	;	my_wnck_atom_get ("_NET_WM_WINDOW_OPACITY"),
+	;	XA_CARDINAL, 32, PropModeReplace, (guchar *)&v, 1);
   (not-yet-implemented "opacity"))
 
 (defn maximize []
-  "Maximise the current window (returns TRUE)."
+  "Maximise the current window , returns True."
   (*current-window*.maximize)
   True)
 
 (defn maximize_vertically []
-  "Maximise vertically the current window (returns TRUE)."
-  (not-yet-implemented "maximize_vertically")
+  "Maximise vertically the current window , returns True."
+  (add-state-prop "maximized_vert")
   True)
 
 (defn maximize_horizontally []
-  "Maximise horizontally the current window (returns TRUE)."
-  (not-yet-implemented "maximize_horizontally")
+  "Maximise horizontally the current window , returns True."
+  (add-state-prop "maximized_horz")
   True)
 
 (defn minimize []
-  "Minimise the current window (returns TRUE)."
+  "Minimise the current window , returns True."
   (*current-window*.minimize)
   True)
 
 (defn pin []
-  "Pin the current window to all workspaces (returns TRUE)."
-  (not-yet-implemented "pin")
+  "Pin the current window to all workspaces , returns True."
+  (add-state-prop "sticky")
+  True)
+
+(defn println [#*args]
+  "Print args with trailing newline, returns True."
+  (print #*args
+         :sep "")
   True)
 
 (defn set_viewport [viewport-nb]
-  "Move the window to a specific viewport number, counting from 1 (returns boolean)."
+  "Move the window to a specific viewport number, counting from 1 , returns boolean."
   (not-yet-implemented "set_viewport"))
 
 (defn set_workspace [workspace-nb]
-  "Move the window to a specific workspace number, counting from 1 (returns boolean)."
+  "Move the window to a specific workspace number, counting from 1 , returns boolean."
   ;(*current-xwindow*.change_property
   ;  (*disp*.intern_atom "_NET_WM_DESKTOP")
   ;  Xlib.Xatom.CARDINAL
   ;  32
   ;  [(- workspace-nb 1) 0x0 0x0 0x0]))
-  (spawn_async "wmctrl" "-i" "-r" (window_xid) "-t" (- workspace-nb 1))))
+  (spawn_async "wmctrl" "-i" "-r" (window_xid) "-t" (- workspace-nb 1)))
 
 (defn shade []
-  "Shade ('roll up') the current window (returns TRUE)."
-  (add_state_prop "shaded")
+  "Shade ('roll up') the current window , returns True."
+  (add-state-prop "shaded")
   True)
 
 (defn skip_pager []
-  "Remove the current window from the window list (returns TRUE)."
-  (add_state_prop "skip_pager")
+  "Remove the current window from the window list , returns True."
+  (add-state-prop "skip_pager")
   True)
 
 (defn skip_tasklist []
-  "Remove the current window from the pager (returns TRUE)."
-  (add_state_prop "skip_taskbar")
+  "Remove the current window from the pager , returns True."
+  (add-state-prop "skip_taskbar")
   True)
 
 (defn spawn_async [#*cmd]
-  "Execute a command in the background (returns boolean). Command is given as a single string, or as a series of strings (similar to execl)."
-  (print "spawn_async" (str+ #*cmd))
-  (subprocess.Popen ["bash" "-c" (str+ #*cmd)]))
+  "Execute a command in the background , returns boolean. Command is given as a single string, or as a series of strings (similar to execl)."
+  (setv string-cmd (.join " " (map str cmd)))
+  (print "spawn_async" string-cmd)
+  (subprocess.Popen ["bash" "-c" string-cmd]))
 
 (defn spawn_sync [#*cmd]
   "Execute  a  command in the foreground (returns command output as string, or FALSE on error). Command is given as a single string, or as a series of strings (similar to execl)."
-  (print "spawn" (str+ #*cmd))
-  (. (subprocess.run ["bash" "-c" (str+ #*cmd)] :stdout subprocess.PIPE) stdout))
+  (setv string-cmd (.join " " (map str cmd)))
+  (print "spawn" string-cmd)
+  (.decode (. (subprocess.run ["bash" "-c" string-cmd] :stdout subprocess.PIPE)
+              stdout)
+           "utf-8"))
 
 (defn stick []
-  "Make the current window stick to all viewports (returns TRUE)."
+  "Make the current window stick to all viewports , returns True."
   (not-yet-implemented "stick"))
 
 (defn undecorate []
-  "Remove the window manager decorations from the current window (returns boolean)."
+  "Remove the window manager decorations from the current window , returns boolean."
   (*current-xwindow*.change_property
     (*disp*.intern_atom "_MOTIF_WM_HINTS")
     (*disp*.intern_atom "_MOTIF_WM_HINTS")
@@ -251,32 +295,32 @@
     [0x2 0x0 0x0 0x0 0x0]))
 
 (defn unmaximize []
-  "Un-maximise the current window (returns TRUE)."
+  "Un-maximise the current window , returns True."
   (remove-state-prop "maximized_vert,maximized_horz")
   True)
 
 (defn unminimize []
-  "Un-minimise the current window (returns TRUE)."
-  (not-yet-implemented "unminimize")
+  "Un-minimise the current window , returns True."
+  (*current-window*.restore)
   True)
 
 (defn unpin []
-  "Unpin the current window from all workspaces (returns TRUE)."
-  (not-yet-implemented "unpin")
+  "Unpin the current window from all workspaces , returns True."
+  (remove-state-prop "sticky")
   True)
 
 (defn unshade []
-  "Un-shade ('roll down') the current window (returns TRUE)."
-  (remove_state_prop "shaded")
+  "Un-shade ('roll down') the current window , returns True."
+  (remove-state-prop "shaded")
   True)
 
 (defn unstick []
-  "Unstick the window from viewports (returns TRUE)."
+  "Unstick the window from viewports , returns True."
   (not-yet-implemented "unstick")
   True)
 
 (defn wintype [type]
-  "Set the window type of the current window (returns boolean). Accepted values are: normal, dialog, menu, toolbar, splashscreen, utility, dock, desktop."
+  "Set the window type of the current window , returns boolean. Accepted values are: normal, dialog, menu, toolbar, splashscreen, utility, dock, desktop."
   (not-yet-implemented "wintype"))
 
 (defn window_class []
@@ -295,12 +339,11 @@
 
 (defn window_role []
   "Return the role (as determined by the WM_WINDOW_ROLE hint) of the current window (String)."
-  ;(*current-xwindow*.get_wm_hints)
   (not-yet-implemented "window_role"))
 
 (defn window_workspace []
   "Returns the workspace a window is on (Integer)."
-  (window-xprop-value "_NET_WM_DESKTOP"))
+  (+ (window-xprop-value "_NET_WM_DESKTOP") 1))
 
 (defn window_xid []
   "Return the X11 window id of the current window (Integer)."
@@ -334,7 +377,7 @@
                            (/ (dimension-to-pixels window-margin-horizontal) 2)))))
   (when (in "bottom" direction)
     (setv y (- (dimension-to-pixels "50%" :is-vertical True)
-               (dimension-to-pixels screen-margin-bottom* :is-vertical True)
+               (dimension-to-pixels screen-margin-bottom :is-vertical True)
                (math.floor (/ (dimension-to-pixels window-margin-vertical :is-vertical True) 2)))))
   (when (in "top" direction)
     (setv y screen-margin-top))
@@ -358,6 +401,11 @@
 (defn screen_width []
   (setv screen-size (pwc.getScreenSize (*current-window*.getDisplay)))
   screen-size.width)
+
+(defn unfullscreen []
+  "Make the current window fullscreen , returns True."
+  (remove-state-prop "fullscreen")
+  True)
   
 (defn window-index-in-class []
   (setv index 0)
@@ -369,6 +417,10 @@
        (setv index (+ index 1))))
   index)
 
+(defn window-type [type]
+  "Set the window type of the current window , returns boolean. Accepted values are: normal, dialog, menu, toolbar, splashscreen, utility, dock, desktop."
+  (wintype type))
+
 ;; MAIN
 
 (defn process-window [window]
@@ -376,13 +428,18 @@
   (global *current-xwindow*)
   (setv *current-window* window)
   (setv *current-xwindow* (window.getHandle))
-  (for [as-file (if (or *command-line-args*.load *command-line-args*.eval)
-                    *command-line-args*.load
-                    (sorted (glob.glob (os.path.join +config-dir+ "*.as"))))]
-    (print "== Running" as-file)
-    (hy.eval (hy.read-many (open as-file))))
-  (for [eval-str *command-line-args*.eval]
-    (hy.eval (hy.read-many eval-str))))
+  (try
+    (for [as-file (if (or *command-line-args*.load *command-line-args*.eval)
+                      *command-line-args*.load
+                      (sorted (glob.glob (os.path.join +config-dir+ "*.as"))))]
+      (print "== Running" as-file)
+      (hy.eval (hy.read-many (open as-file))))
+    (for [eval-str *command-line-args*.eval]
+      (hy.eval (hy.read-many eval-str)))
+    (except [e [Xlib.error.BadDrawable Xlib.error.BadWindow]]
+      (print "Window closed during script execution")
+      (return False))))
+
 
 (defn main-loop []
   (try-to-build-config-from-devilspie-if-we-have-none)
