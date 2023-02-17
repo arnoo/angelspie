@@ -111,7 +111,6 @@
 (defn wnck-list-windows []
   (setv windows [])
   (for [screen (wnck-list-screens)]
-    (screen.get_windows)
     (setv windows (+ windows (screen.get_windows))))
   windows)
 
@@ -484,9 +483,9 @@
       (when (not (in screen known-screens-res))
         (print "ON NEW SCREEN ++++++")
         (screen.connect "window-opened" on-new-window)
-        (setv (. known-screen-res [screen])
+        (setv (. known-screens-res [screen])
               [(screen.get_width) (screen.get_height)]))
-      (when (not (= (. known-screen-res [screen])
+      (when (not (= (. known-screens-res [screen])
                     [(screen.get_width) (screen.get_height)]))
         (print "SCREEN RESOLUTION CHANGED, RERUNNING FOR ALL WINDOWS ++++++")
         (for [window (wnck-list-windows)]
