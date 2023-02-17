@@ -55,10 +55,13 @@ The following Devilspie functions are as of yet unimplemented:
 
 To run, use `pipenv run hy angelspie.hy` in the source directory.
 
-
 ## Command line use
 
-I have this bound to Super+Right in my desktop environment:
+You can specify `.as` scripts or even code for Angelspie to evaluate.
+
+Code passed to `--eval` is evaluated in the context of the active window.
+
+For example, I have this bound to Super+Right in my desktop environment:
 `pipenv run hy angelspie.hy --load=${HOME}/.config/angelspie/00-screen-conf.as --eval='(my-tile "right")'`
 which will tile the active window right
 
@@ -86,4 +89,4 @@ which will tile the active window right
           :window-margin-vertical 0)))
 ```
 
-This makes tiling adapt to the screen size and work exactly the same at the keyboard and in my Angelspie rules that also call my-tile to tile windows.
+It is loaded both in my keyboard shortcuts and as part of my global Angelspie configuration. This makes tiling adapt to the screen size and work exactly the same at the keyboard and in my Angelspie rules.

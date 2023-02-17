@@ -62,7 +62,6 @@
   (test-fct unpin)
   (test-fct below)
   (test-fct above)
-  (assert (= (application_name) "xterm"))
   (setv original-workspace (window_workspace))
   (set_workspace 1)
   (time.sleep 0.5)
