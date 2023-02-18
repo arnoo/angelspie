@@ -111,6 +111,7 @@
 (defn wnck-list-windows []
   (setv windows [])
   (for [screen (wnck-list-screens)]
+    (screen.force-update)
     (setv windows (+ windows (screen.get_windows))))
   windows)
 
