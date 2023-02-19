@@ -22,9 +22,10 @@
 (import os)
 (import pathlib)
 (import pgi)
+(pgi.require_version "GdkX11" "3.0")
 (pgi.require_version "Gtk" "3.0")
 (pgi.require_version "Wnck" "3.0")
-(import pgi.repository [GLib Gtk Wnck])
+(import pgi.repository [GdkX11 GLib Gtk Wnck])
 (import re)
 (import signal)
 (import subprocess)
@@ -37,6 +38,7 @@
   hyrule.anaphoric * :readers [%])
 
 (setv *disp* (Xlib.display.Display))
+(setv *gdk-disp* (GdkX11.X11Display.get_default))
 (setv +config-dir+ (os.path.join (pathlib.Path.home) ".config/angelspie"))
 
 ;; UTILS
@@ -114,18 +116,6 @@
     (screen.force-update)
     (setv windows (+ windows (screen.get_windows))))
   windows)
-
-(defn wnck-set-geom [prop [x 0] [y 0] [w 0] [h 0]]
-  (setv *wnck-geom-masks*
-        {
-          "x" Wnck.WindowMoveResizeMask.X
-          "y" Wnck.WindowMoveResizeMask.Y
-          "w" Wnck.WindowMoveResizeMask.WIDTH
-          "h" Wnck.WindowMoveResizeMask.HEIGHT
-        })
-  (*current-window*.set_geometry Wnck.WindowGravity.CURRENT
-                                 (get *wnck-geom-masks* prop)
-                                 x y w h))
 
 ;; DEVILSPIE FUNCTIONS/MACROS
 
@@ -224,13 +214,11 @@
     (print f"Invalid geometry: {geom-str}")
     (return False))
   (ap-when (.group geom-parts "x")
-    (wnck-set-geom "x" :x (dimension-to-pixels it)))
-  (ap-when (.group geom-parts "y")
-    (wnck-set-geom "y" :y (dimension-to-pixels it :is-vertical True)))
+    (*current-gdk-window*.move (dimension-to-pixels it)
+                               (dimension-to-pixels (.group geom-parts "y") :is-vertical True)))
   (ap-when (.group geom-parts "w")
-    (wnck-set-geom "w" :w (dimension-to-pixels it)))
-  (ap-when (.group geom-parts "h")
-    (wnck-set-geom "h" :h (dimension-to-pixels it :is-vertical True)))
+    (*current-gdk-window*.resize (dimension-to-pixels it)
+                                (dimension-to-pixels (.group geom-parts "h") :is-vertical True)))
   (return True))
 
 (defn matches [string pattern]
@@ -243,6 +231,7 @@
 	;XChangeProperty (gdk_x11_get_default_xdisplay (), wnck_window_get_xid(c->window),
 	;	my_wnck_atom_get ("_NET_WM_WINDOW_OPACITY"),
 	;	XA_CARDINAL, 32, PropModeReplace, (guchar *)&v, 1);
+  (*current-gdk-window*.set-opacity (/ level 100))
   (not-yet-implemented "opacity"))
 
 (defn maximize []
@@ -320,11 +309,7 @@
 
 (defn undecorate []
   "Remove the window manager decorations from the current window , returns boolean."
-  (*current-xwindow*.change_property
-    (*disp*.intern_atom "_MOTIF_WM_HINTS")
-    (*disp*.intern_atom "_MOTIF_WM_HINTS")
-    32
-    [0x2 0x0 0x0 0x0 0x0]))
+  (*current-gdk-window*.set_decorations 0))
 
 (defn unmaximize []
   "Un-maximise the current window , returns True."
@@ -420,11 +405,11 @@
             (in "top" direction))
     (setv h (math.floor (- (/ h 2)
                            (/ (dimension-to-pixels window-margin-vertical) 2)))))
-  ; (print "TILE " (.join "" [(str x) "x" (str y) "+" (str w) "+" (str h)]))
-  (wnck-set-geom "x" :x (dimension-to-pixels x))
-  (wnck-set-geom "y" :y (dimension-to-pixels y :is-vertical True))
-  (wnck-set-geom "w" :w (dimension-to-pixels w))
-  (wnck-set-geom "h" :h (dimension-to-pixels h :is-vertical True)))
+  ;(print "TILE " (.join "" [(str x) "x" (str y) "+" (str w) "+" (str h)]))
+  (*current-gdk-window*.move (dimension-to-pixels x)
+                             (dimension-to-pixels y :is-vertical True))
+  (*current-gdk-window*.resize (dimension-to-pixels w)
+                               (dimension-to-pixels h :is-vertical True)))
 
 (defn screen_height []
   "Returns whe height in pixels of the current window's screen."
@@ -458,8 +443,10 @@
 (defn process-window [window]
   (global *current-window*)
   (global *current-xwindow*)
+  (global *current-gdk-window*)
   (setv *current-window* window)
   (setv *current-xwindow* (*disp*.create_resource_object "window" (window.get_xid)))
+  (setv *current-gdk-window* (GdkX11.X11Window.foreign_new_for_display *gdk-disp* (window.get_xid)))
   (try
     (for [as-file (if (or *command-line-args*.load *command-line-args*.eval)
                       *command-line-args*.load
@@ -503,7 +490,12 @@
         (threading.Thread :target check-screens-and-attach-handler
                           :daemon True))
   (screen-checker-thread.start)
-  (GLib.unix_signal_add GLib.PRIORITY_DEFAULT signal.SIGINT Gtk.main_quit)
+  (GLib.unix_signal_add
+    GLib.PRIORITY_DEFAULT
+    signal.SIGINT
+    (fn []
+      (Wnck.shutdown)
+      (Gtk.main_quit)))
   (Gtk.main))
 
 (setv *command-line-args* (parse-command-line))
