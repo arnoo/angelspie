@@ -29,13 +29,12 @@
 (import re)
 (import signal)
 (import subprocess)
+(import sys)
 (import threading)
 (import time)
 (import Xlib)
 (import Xlib.display)
-(require
-  hyrule [->>]
-  hyrule.anaphoric * :readers [%])
+(require hyrule *)
 
 (setv *disp* (Xlib.display.Display))
 (setv *gdk-disp* (GdkX11.X11Display.get_default))
@@ -43,21 +42,52 @@
 
 ;; UTILS
 
-(defn dimension-to-pixels [dimension [is-vertical False]]
+(defn _docs []
+  "Returns the API docs as Markdown"
+  (with [source-handle (open (os.path.abspath __file__))]
+    (for [line (source-handle.readlines)]
+      (when (or (line.startswith "(defn")
+                (line.startswith "(defmacro"))
+        (setv [_ func-name func-args] (line.split " " 2))
+        (unless (func-name.startswith "_")
+          (setv func-args
+            (if (= func-args "[]")
+                ""
+                (+ " " (get func-args (slice 1 -2)))))
+          (print f"### `({func-name}{func-args})`")
+          (if (line.startswith "(defn")
+              (print (. (globals) [(hy.mangle func-name)] __doc__))
+              (print (. __macros__ [func-name] __doc__)))
+          (print)))
+      (when (line.startswith "; ##")
+        (print (get line (slice 2 -1)))))))
+
+(defn _dimension_to-pixels [dimension [is-vertical False]]
   (if (.endswith (str dimension) "%")
       (math.floor (/ (* (int (get (str dimension) (slice 0 -1)))
                         (if is-vertical (screen-height) (screen-width)))
                      100))
       (int dimension)))
 
-(defn parse-command-line []
+(defn _parse-command-line []
   (setv parser (argparse.ArgumentParser :description "Act on windows when created"))
+  (.add-argument parser
+                 "--docs"
+                 :action "store_const"
+                 :const True
+                 :help "Output the Markdown API docs and exit.")
   (.add-argument parser
                  "--eval"
                  :default []
                  :help "as code to eval. Disables loading of config files, happens after processing conf_file arguments."
                  :metavar "AS_CODE"
                  :nargs "*")
+  (.add-argument parser
+                 "-v"
+                  "--verbose"
+                 :action "store_const"
+                 :const True
+                 :help "Verbose output")
   (.add-argument parser
                  "--load"
                  :default []
@@ -66,78 +96,78 @@
                  :nargs "*")
   (.parse-args parser))
 
-(defn not-yet-implemented [fn-name]
+(defn _print-when-verbose [#*args]
+  (when *command-line-args*.docs
+     (print #*args)))
+
+(defn _not-yet-implemented [fn-name]
   (print f"WARNING: Call to function '{fn-name}' which is not yet implemented."))
 
-(defn str+ [#*args]
-  "Transform parameters into strings and concat them with spaces in between."
-  (. "" (join (list (map str args)))))
-
-(defn try-to-build-config-from-devilspie-if-we-have-none []
-  (when (not (glob.glob (os.path.join +config-dir+ "*.as")))
+(defn _try-to-build-config-from-devilspie-if-we-have-none []
+  (unless (glob.glob (os.path.join +config-dir+ "*.as"))
     (os.mkdir +config-dir+)
     (for [ds-file (glob.glob (os.path.join (pathlib.Path.home) ".devilspie/*.ds"))]
-      (print f"Importing config from '{ds-file}'")
+      (_print-when-verbose f"Importing config from '{ds-file}'")
       (with [ds-handle (open ds-file)]
         (setv script (ds-handle.read)))
-      (setv script (script.replace "(if " "(dsif "))
-      (setv script (script.replace "(is " "(= "))
-      (setv script (script.replace "(str " "(str+ "))
-      (setv script (script.replace "(print " "(dsprint "))
+      (doto script
+            (.replace "(if " "(dsif ")
+            (.replace "(is " "(= ")
+            (.replace "(str " "(str+ ")
+            (.replace "(print " "(dsprint "))
       (setv as-file (re.sub "\\.ds$" ".as" ds-file))
       (setv as-file (re.sub "^.*/\\.devilspie" (str +config-dir+) as-file))
       (with [as-handle (open as-file "w")]
         (as-handle.write script)))))
 
-(defn window-xprop-value [prop_name]
+(defn _window-xprop-value [prop_name]
   "Returns the given property of the window, e.g. pass '_NET_WM_STATE' (String)."
-  (setv xprop
-        (*current-xwindow*.get_full_property
-          (*disp*.intern_atom prop_name)
-          Xlib.X.AnyPropertyType))
-  (when xprop
-    (. xprop.value [0])))
+  (ap-when (*current-xwindow*.get_full_property
+             (*disp*.intern_atom prop_name)
+             Xlib.X.AnyPropertyType)
+    (. it.value [0])))
 
-(defn wnck-get-active-window []
-  (for [window (wnck-list-windows)]
+(defn _wnck-get-active-window []
+  (for [window (_wnck-list-windows)]
     (when (window.is_active)
       (return window))))
 
-(defn wnck-list-screens []
+(defn _wnck-list-screens []
   (setv screens [])
   (for [i (range 10)]
     (ap-when (Wnck.Screen.get i)
        (.append screens it)))
   screens)
 
-(defn wnck-list-windows []
+(defn _wnck-list-windows []
   (setv windows [])
-  (for [screen (wnck-list-screens)]
+  (for [screen (_wnck-list-screens)]
     (screen.force-update)
     (setv windows (+ windows (screen.get_windows))))
   windows)
 
-;; DEVILSPIE FUNCTIONS/MACROS
-
-(defmacro begin [&rest args]
-  `(do ~args))
+; ## DEVILSPIE FUNCTIONS/MACROS
 
 (defn application_name []
   "Return the application name (as determined by libwnck) of the current window (String)."
   (.get_name (.get_application *current-window*)))
 
 (defn above []
-  "Set the current window to be above all normal windows , returns True."
+  "Set the current window to be above all normal windows, returns True."
   (*current-window*.make_above)
   True)
 
+(defmacro begin [&rest args]
+  "The devilspie equivalent of Hy's `do` : evaluates all the function calls within, returns the result of the last evaluation."
+  `(do ~args))
+
 (defn below []
-  "Set the current window to be below all normal windows , returns True."
+  "Set the current window to be below all normal windows, returns True."
   (*current-window*.make_below)
   True)
 
 (defn center []
-  "Center position of current window , returns boolean."
+  "Center position of current window, returns boolean."
   (setv [x y w h] (*current-window*.get-geometry))
   (setv new-x (math.floor (- (/ (screen_width) 2)
                              (/ w 2))))
@@ -146,7 +176,7 @@
   (geometry (str+ "+" new-x "+" new-y)))
 
 (defn close []
-  "Close the current window , returns True."
+  "Close the current window, returns True."
   (*current-window*.close (time.time))
   True)
 
@@ -157,11 +187,11 @@
 (defn debug []
   "Debugging function, outputs the current window's title, name, role and geometry (Returns TRUE)."
   (setv [x y w h] (*current-window*.get-geometry))
-  (print f"Window Title: {(window_name)}; Application Name: '{(application_name)}'; Class: '{(window_class)}'; Geometry: {w}x{h}+{x}+{y}")
+  (print f"Window Title: '{(window_name)}'; Application Name: '{(application_name)}'; Class: '{(window_class)}'; Geometry: {w}x{h}+{x}+{y}")
   True)
 
 (defn decorate []
-  "Add the window manager decorations to the current window , returns boolean."
+  "Add the window manager decorations to the current window, returns boolean."
   (*current-xwindow*.change_property
     (*disp*.intern_atom "_MOTIF_WM_HINTS")
     (*disp*.intern_atom "_MOTIF_WM_HINTS")
@@ -169,34 +199,35 @@
     [0x0 0x0 0x0 0x0 0x0]))
 
 (defmacro dsif [cond-clause then-clause [else-clause None]]
+  "Equivalent to Devilspie's if. Like Hy's builtin if, but the else clause is optional.
+   Evaluates then-clause if cond-clause is True, else-clause otherwise if provided."
   `(if ~cond-clause
        ~then-clause
        ~(when else-clause else-clause)))
 
 (defmacro dsprint [#*args]
-  "Print args without trailing newline, returns boolean."
+  "Equivalent to Devilspie's print.
+   Print args without trailing newline, returns boolean."
   (print #*args :sep ""
                 :end ""
                 :flush True))
 
 (defn focus []
-  "Focus the current window , returns True."
+  "Focus the current window, returns True."
   (*current-window*.activate (time.time))
   True)
 
 (defn fullscreen []
-  "Make the current window fullscreen , returns True."
+  "Make the current window fullscreen, returns True."
   (*current-window*.set_fullscreen True)
   True)
 
 (defn geometry [geom-str]
-  "Set position + size (as string) of current window , returns boolean.
+  "Set position + size (as string) of current window, returns boolean.
    geom-str should be in X-GeometryString format:
     [=][<width>{xX}<height>][{+-}<xoffset>{+-}<yoffset>]
    as an extension to the X-GeometryString format, all values
    can be specified as percentages of screen size.
-   Note that negative positions are considered as 0
-   by the underlying pywinctl library and therefore useless.
    Examples:
        (geometry \"400×300+0-22\")
        (geometry \"640×480\")
@@ -210,15 +241,17 @@
                      "((?P<x>" size_re ")(?P<y>" size_re ")|)"
                      "$")
                   (.lower geom-str)))
-  (when (not geom-parts)
+  (unless geom-parts
     (print f"Invalid geometry: {geom-str}")
     (return False))
   (ap-when (.group geom-parts "x")
-    (*current-gdk-window*.move (dimension-to-pixels it)
-                               (dimension-to-pixels (.group geom-parts "y") :is-vertical True)))
+    (*current-gdk-window*.move (_dimension_to-pixels it)
+                               (_dimension_to-pixels (.group geom-parts "y") :is-vertical True)))
   (ap-when (.group geom-parts "w")
-    (*current-gdk-window*.resize (dimension-to-pixels it)
-                                (dimension-to-pixels (.group geom-parts "h") :is-vertical True)))
+    (*current-gdk-window*.resize (_dimension_to-pixels it)
+                                (_dimension_to-pixels (.group geom-parts "h") :is-vertical True)))
+  ;Calling get_geometry after resize/move seems necessary for some reason
+  (*current-gdk-window*.get_geometry)
   (return True))
 
 (defn matches [string pattern]
@@ -226,36 +259,36 @@
   (bool (re.search pattern string)))
 
 (defn opacity [level]
-  "Change the opacity level (as integer in 0..100) of the current window , returns boolean."
+  "Change the opacity level (as integer in 0..100) of the current window, returns boolean."
 	;v=0xffffffff/100*level;
 	;XChangeProperty (gdk_x11_get_default_xdisplay (), wnck_window_get_xid(c->window),
 	;	my_wnck_atom_get ("_NET_WM_WINDOW_OPACITY"),
 	;	XA_CARDINAL, 32, PropModeReplace, (guchar *)&v, 1);
-  (*current-gdk-window*.set-opacity (/ level 100))
-  (not-yet-implemented "opacity"))
+  ;(*current-gdk-window*.set-opacity (/ level 100))
+  (_not-yet-implemented "opacity"))
 
 (defn maximize []
-  "Maximise the current window , returns True."
+  "Maximise the current window, returns True."
   (*current-window*.maximize)
   True)
 
 (defn maximize_vertically []
-  "Maximise vertically the current window , returns True."
+  "Maximise vertically the current window, returns True."
   (*current-window*.maximize_vertically)
   True)
 
 (defn maximize_horizontally []
-  "Maximise horizontally the current window , returns True."
+  "Maximise horizontally the current window, returns True."
   (*current-window*.maximize_horizontally)
   True)
 
 (defn minimize []
-  "Minimise the current window , returns True."
+  "Minimise the current window, returns True."
   (*current-window*.minimize)
   True)
 
 (defn pin []
-  "Pin the current window to all workspaces , returns True."
+  "Pin the current window to all workspaces, returns True."
   (*current-window*.pin)
   True)
 
@@ -266,78 +299,90 @@
   True)
 
 (defn set_viewport [viewport-nb]
-  "Move the window to a specific viewport number, counting from 1 , returns boolean."
-  (not-yet-implemented "set_viewport"))
+  "Move the window to a specific viewport number, counting from 1, returns boolean."
+  (_not-yet-implemented "set_viewport"))
 
 (defn set_workspace [workspace-nb]
-  "Move the window to a specific workspace number, counting from 1 , returns boolean."
- (*current-window*.move_to_workspace (get (.get_workspaces (*current-window*.get_screen))
-                                          (- workspace-nb 1))))
+  "Move the window to a specific workspace number, counting from 1, returns boolean."
+  (setv target-workspace (. *current-window*
+                            (get_screen)
+                            (get_workspaces)
+                            [(- workspace-nb 1)]))
+  (*current-window*.move_to_workspace target-workspace))
+;  (while (not (= (*current-window*.get_workspace)
+;                 target-workspace))
+;    (time.sleep 0.01)))
 
 (defn shade []
-  "Shade ('roll up') the current window , returns True."
+  "Shade ('roll up') the current window, returns True."
   (*current-window*.shade)
   True)
 
 (defn skip_pager []
-  "Remove the current window from the window list , returns True."
+  "Remove the current window from the window list, returns True."
   (*current-window*.set_skip_pager True)
   True)
 
 (defn skip_tasklist []
-  "Remove the current window from the pager , returns True."
+  "Remove the current window from the pager, returns True."
   (*current-window*.set_skip_tasklist True)
   True)
 
 (defn spawn_async [#*cmd]
-  "Execute a command in the background , returns boolean. Command is given as a single string, or as a series of strings (similar to execl)."
+  "Execute a command in the background, returns boolean. Command is given as a single string, or as a series of strings (similar to execl)."
   (setv string-cmd (.join " " (map str cmd)))
-  (print "spawn_async" string-cmd)
+  (_print-when-verbose "spawn_async" string-cmd)
   (subprocess.Popen ["bash" "-c" string-cmd]))
 
 (defn spawn_sync [#*cmd]
   "Execute  a  command in the foreground (returns command output as string, or FALSE on error). Command is given as a single string, or as a series of strings (similar to execl)."
   (setv string-cmd (.join " " (map str cmd)))
-  (print "spawn" string-cmd)
+  (_print-when-verbose "spawn" string-cmd)
   (.decode (. (subprocess.run ["bash" "-c" string-cmd] :stdout subprocess.PIPE)
               stdout)
            "utf-8"))
 
 (defn stick []
-  "Make the current window stick to all viewports , returns True."
-  (not-yet-implemented "stick"))
+  "Make the current window stick to all viewports, returns True."
+  (_not-yet-implemented "stick"))
+
+(defn str+ [#*args]
+  "Transform parameters into strings and concat them with spaces in between."
+  (. "" (join (list (map str args)))))
 
 (defn undecorate []
-  "Remove the window manager decorations from the current window , returns boolean."
-  (*current-gdk-window*.set_decorations 0))
+  "Remove the window manager decorations from the current window, returns boolean."
+  (*current-gdk-window*.set_decorations 0)
+  (*current-gdk-window*.get_geometry)
+  True)
 
 (defn unmaximize []
-  "Un-maximise the current window , returns True."
+  "Un-maximise the current window, returns True."
   (*current-window*.unmaximize)
   True)
 
 (defn unminimize []
-  "Un-minimise the current window , returns True."
+  "Un-minimise the current window, returns True."
   (*current-window*.unminimize (time.time))
   True)
 
 (defn unpin []
-  "Unpin the current window from all workspaces , returns True."
+  "Unpin the current window from all workspaces, returns True."
   (*current-window*.unpin)
   True)
 
 (defn unshade []
-  "Un-shade ('roll down') the current window , returns True."
+  "Un-shade ('roll down') the current window, returns True."
   (*current-window*.unshade)
   True)
 
 (defn unstick []
-  "Unstick the window from viewports , returns True."
-  (not-yet-implemented "unstick")
+  "Unstick the window from viewports, returns True."
+  (_not-yet-implemented "unstick")
   True)
 
 (defn wintype [type]
-  "Set the window type of the current window , returns boolean. Accepted values are: normal, dialog, menu, toolbar, splashscreen, utility, dock, desktop."
+  "Set the window type of the current window, returns boolean. Accepted values are: normal, dialog, menu, toolbar, splashscreen, utility, dock, desktop."
   (*current-window*.set_window_type (getattr Wnck.WindowType type)))
 
 (defn window_class []
@@ -350,23 +395,22 @@
 
 (defn window_property [prop-name]
   "Returns the given property of the window, e.g. pass '_NET_WM_STATE' (String)."
-  (setv xprop-value (window-xprop-value prop-name))
-  (when xprop-value
-    (*disp*.get_atom_name xprop-value)))
+  (ap-when (_window-xprop-value prop-name)
+     (*disp*.get_atom_name it)))
 
 (defn window_role []
   "Return the role (as determined by the WM_WINDOW_ROLE hint) of the current window (String)."
   (*current-window*.get_role))
 
 (defn window_workspace []
-  "Returns the workspace a window is on (Integer)."
+  "Returns the workspace the current window is on (Integer)."
   (+ (.get_number (*current-window*.get_workspace)) 1))
 
 (defn window_xid []
   "Return the X11 window id of the current window (Integer)."
   (*current-window*.get_xid))
 
-;; ADDITIONS TO DEVILSPIE
+; ## ADDITIONS TO DEVILSPIE
 
 (defn tile [direction [screen-margin-top 0]
                       [screen-margin-bottom 0]
@@ -374,28 +418,41 @@
                       [screen-margin-right 0]
                       [window-margin-horizontal 0]
                       [window-margin-vertical 0]]
+  "Tile the current window. `direction` can be one of :
+     - \"left\"
+     - \"right\"
+     - \"top\"
+     - \"top-left\"
+     - \"top-right\"
+     - \"center\"
+     - \"center-left\"
+     - \"center-right\"
+     - \"bottom\"
+     - \"bottom-left\"
+     - \"bottom-right\"
+     - \"full\""
   (unmaximize)
   (setv x screen-margin-left)
   (setv y screen-margin-top)
   (setv w (- (screen_width)
-             (dimension-to-pixels screen-margin-right)
-             (dimension-to-pixels screen-margin-left)))
+             (_dimension_to-pixels screen-margin-right)
+             (_dimension_to-pixels screen-margin-left)))
   (setv h (- (screen_height)
-             (dimension-to-pixels screen-margin-top :is-vertical True)
-             (dimension-to-pixels screen-margin-bottom :is-vertical True)))
+             (_dimension_to-pixels screen-margin-top :is-vertical True)
+             (_dimension_to-pixels screen-margin-bottom :is-vertical True)))
   (when (in "left" direction)
     (setv x screen-margin-left))
   (when (in "right" direction)
-    (setv x (+ (dimension-to-pixels "50%")
-               (math.floor (/ (dimension-to-pixels window-margin-horizontal) 2)))))
+    (setv x (+ (_dimension_to-pixels "50%")
+               (math.floor (/ (_dimension_to-pixels window-margin-horizontal) 2)))))
   (when (or (in "left" direction)
             (in "right" direction))
     (setv w (math.floor (- (/ w 2)
-                           (/ (dimension-to-pixels window-margin-horizontal) 2)))))
+                           (/ (_dimension_to-pixels window-margin-horizontal) 2)))))
   (when (in "bottom" direction)
-    (setv y (- (dimension-to-pixels "50%" :is-vertical True)
-               (dimension-to-pixels screen-margin-bottom :is-vertical True)
-               (math.floor (/ (dimension-to-pixels window-margin-vertical :is-vertical True) 2)))))
+    (setv y (- (_dimension_to-pixels "50%" :is-vertical True)
+               (_dimension_to-pixels screen-margin-bottom :is-vertical True)
+               (math.floor (/ (_dimension_to-pixels window-margin-vertical :is-vertical True) 2)))))
   (when (in "top" direction)
     (setv y screen-margin-top))
   (when (in "center" direction)
@@ -404,12 +461,14 @@
   (when (or (in "bottom" direction)
             (in "top" direction))
     (setv h (math.floor (- (/ h 2)
-                           (/ (dimension-to-pixels window-margin-vertical) 2)))))
-  ;(print "TILE " (.join "" [(str x) "x" (str y) "+" (str w) "+" (str h)]))
-  (*current-gdk-window*.move (dimension-to-pixels x)
-                             (dimension-to-pixels y :is-vertical True))
-  (*current-gdk-window*.resize (dimension-to-pixels w)
-                               (dimension-to-pixels h :is-vertical True)))
+                           (/ (_dimension_to-pixels window-margin-vertical) 2)))))
+  (_print-when-verbose "TILE " (.join "" [(str x) "x" (str y) "+" (str w) "+" (str h)]))
+  (*current-gdk-window*.move (_dimension_to-pixels x)
+                             (_dimension_to-pixels y :is-vertical True))
+  (*current-gdk-window*.resize (_dimension_to-pixels w)
+                               (_dimension_to-pixels h :is-vertical True))
+  ;Calling get_geometry after resize/move seems necessary for some reason
+  (*current-gdk-window*.get_geometry))
 
 (defn screen_height []
   "Returns whe height in pixels of the current window's screen."
@@ -420,27 +479,46 @@
   (.get_width (.get_screen *current-window*)))
 
 (defn unfullscreen []
-  "Make the current window fullscreen , returns True."
+  "Make the current window fullscreen, returns True."
   (*current-window*.set_fullscreen False)
   True)
   
+(defn window-index []
+  "Returns the index of the window in the taskbar."
+  (*current-window*.get_sort_order))
+  
 (defn window-index-in-class []
+  "Returns the index of the window in the taskbar, counting only the windows of the same class."
   (setv index 0)
-  (for [w (sorted (wnck-list-windows) :key (fn [ww] (str (ww.get_xid))))]
+  (for [w (sorted (_wnck-list-windows) :key (fn [ww] (str (ww.get_sort_order))))]
      (when (= (w.get_class_group_name)
               (window_class))
        (when (= w *current-window*)
          (break))
        (setv index (+ index 1))))
+  (_print-when-verbose "INDEX IN CLASS" index)
+  index)
+  
+(defn window-index-in-workspace []
+  "Returns the index of the window in the taskbar, counting only the windows of the same workspace."
+  (setv index 0)
+  (setv workspace-nb (.get_number (*current-window*.get_workspace)))
+  (for [w (sorted (_wnck-list-windows) :key (fn [ww] (str (ww.get_sort_order))))]
+     (when (and (w.get_workspace)
+                (= (.get_number (w.get_workspace)) workspace-nb))
+       (when (= w *current-window*)
+         (break))
+       (setv index (+ index 1))))
+  (_print-when-verbose "INDEX IN WORKSPACE" index)
   index)
 
 (defn window-type [type]
-  "Set the window type of the current window , returns boolean. Accepted values are: normal, dialog, menu, toolbar, splashscreen, utility, dock, desktop."
+  "Set the window type of the current window, returns boolean. Accepted values are: normal, dialog, menu, toolbar, splashscreen, utility, dock, desktop."
   (wintype type))
 
-;; MAIN
+;;  MAIN
 
-(defn process-window [window]
+(defn _process-window [window]
   (global *current-window*)
   (global *current-xwindow*)
   (global *current-gdk-window*)
@@ -451,43 +529,43 @@
     (for [as-file (if (or *command-line-args*.load *command-line-args*.eval)
                       *command-line-args*.load
                       (sorted (glob.glob (os.path.join +config-dir+ "*.as"))))]
-      (print "== Running" as-file)
+      (_print-when-verbose "== Running" as-file)
       (hy.eval (hy.read-many (open as-file))))
     (for [eval-str *command-line-args*.eval]
       (hy.eval (hy.read-many eval-str)))
     (except [e [Xlib.error.BadDrawable Xlib.error.BadWindow]]
-      (print "Window closed during script execution")
+      (_print-when-verbose "Window closed during script execution")
       (return False))))
 
-(setv last-on-new-window-arg None)
-(defn on-new-window [screen window]
-  (print "ON NEW WINDOW ++++++")
-  (process-window window))
+(defn _on-new-window [screen window]
+  (_print-when-verbose "ON NEW WINDOW ++++++")
+  (_process-window window))
 
-(defn check-screens-and-attach-handler []
-  (setv known-screens-res {})
+(setv *known-screens-res* {})
+(defn _check-screens-and-attach-handler []
+  (global *known-screens-res*)
   (while True
-    (for [screen (wnck-list-screens)]
-      (when (not (in screen known-screens-res))
-        (print "ON NEW SCREEN ++++++")
-        (screen.connect "window-opened" on-new-window)
-        (setv (. known-screens-res [screen])
+    (for [screen (_wnck-list-screens)]
+      (unless (in screen *known-screens-res*)
+        (_print-when-verbose "ON NEW SCREEN ++++++")
+        (screen.connect "window-opened" _on-new-window)
+        (setv (. *known-screens-res* [screen])
               [(screen.get_width) (screen.get_height)]))
-      (when (not (= (. known-screens-res [screen])
-                    [(screen.get_width) (screen.get_height)]))
-        (print "SCREEN RESOLUTION CHANGED, RERUNNING FOR ALL WINDOWS ++++++")
-        (for [window (wnck-list-windows)]
-          (process-window window))))
+      (unless (= (. *known-screens-res* [screen])
+                 [(screen.get_width) (screen.get_height)])
+        (_print-when-verbose "SCREEN RESOLUTION CHANGED, RERUNNING FOR ALL WINDOWS ++++++")
+        (for [window (_wnck-list-windows)]
+          (_process-window window))))
     (time.sleep 3)))
 
-(defn main-loop []
-  (try-to-build-config-from-devilspie-if-we-have-none)
+(defn _main-loop []
+  (_try-to-build-config-from-devilspie-if-we-have-none)
   (when (and (not (glob.glob (os.path.join +config-dir+ "*.as")))
              (not *command-line-args*.load))
     (print "No configuration file found and none specified in command-line")
-    (return))
+    (sys.exit 1))
   (setv screen-checker-thread
-        (threading.Thread :target check-screens-and-attach-handler
+        (threading.Thread :target _check-screens-and-attach-handler
                           :daemon True))
   (screen-checker-thread.start)
   (GLib.unix_signal_add
@@ -498,7 +576,14 @@
       (Gtk.main_quit)))
   (Gtk.main))
 
-(setv *command-line-args* (parse-command-line))
+(setv *command-line-args* (_parse-command-line))
+
+(_print-when-verbose *command-line-args*)
+
+(when *command-line-args*.docs
+  (_docs)
+  (sys.exit 0))
+
 (if *command-line-args*.eval
-  (process-window (wnck-get-active-window))
-  (main-loop))
+  (_process-window (_wnck-get-active-window))
+  (_main-loop))
