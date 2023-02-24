@@ -100,7 +100,7 @@ Return the application name (as determined by libwnck) of the current window (St
 #### `(above )`
 Set the current window to be above all normal windows, returns True.
 
-#### `(begin &rest args)`
+#### `(begin #*forms)`
 The devilspie equivalent of Hy's `do` : evaluates all the function calls within, returns the result of the last evaluation.
 
 #### `(below )`
@@ -135,12 +135,13 @@ Focus the current window, returns True.
 #### `(fullscreen )`
 Make the current window fullscreen, returns True.
 
-#### `(geometry geom-str)`
+#### `(geometry geom-str [frame "monitor"])`
 Set position + size (as string) of current window, returns boolean.
    geom-str should be in X-GeometryString format:
     [=][<width>{xX}<height>][{+-}<xoffset>{+-}<yoffset>]
    as an extension to the X-GeometryString format, all values
-   can be specified as percentages of screen size.
+   can be specified as percentages of screen/monitor size. For
+   percentages of screen size, set frame to "monitor"
    Examples:
        (geometry "400×300+0-22")
        (geometry "640×480")
@@ -238,29 +239,51 @@ Returns the workspace the current window is on (Integer).
 Return the X11 window id of the current window (Integer).
 
 ### ADDITIONS TO DEVILSPIE
-#### `(tile direction [screen-margin-top 0)`
+#### `(monitor-height )`
+Returns the height in pixels of the current window's monitor (i.e. the one that has most of the window in it).
+
+#### `(monitor-width )`
+Returns the width in pixels of the current window's monitor (i.e. the one that has most of the window in it).
+
+#### `(tile [v-pattern "*")`
+Tile the current window according to v-pattern and h-pattern.
+   Patterns are composed of the plus sign (+) which represents the window
+   and underscores (_) which represent empty space.
+   For example, a vertical pattern of _+_ means the window will be in the middle row of
+   a screen divided into three sections. A horizontal pattern of + means that
+   the window will take the whole screen horizontally.
+   Frame defines what we tile relative to.
+   The default value, "monitor" tiles relative to the current monitor.
+   "screen" tiles relative to the current screen (i.e. potentially multiple
+   monitors depending on display setup).
+
+#### `(tile-at direction)`
 Tile the current window. `direction` can be one of :
-     - "left"
-     - "right"
-     - "top"
-     - "top-left"
-     - "top-right"
-     - "center"
-     - "center-left"
-     - "center-right"
-     - "bottom"
-     - "bottom-left"
-     - "bottom-right"
-     - "full"
+     - "left"          which is equivalent to `(tile "*"    "*_" )`
+     - "right"         which is equivalent to `(tile "*"    "_*" )`
+     - "top"           which is equivalent to `(tile "*_"   "*"  )`
+     - "top-left"      which is equivalent to `(tile "*_"   "*_" )`
+     - "top-right"     which is equivalent to `(tile "*_"   "_*" )`
+     - "center"        which is equivalent to `(tile "_**_" "_*_")`
+     - "center-left"   which is equivalent to `(tile "_**_" "*_" )`
+     - "center-right"  which is equivalent to `(tile "_**_" "_*" )`
+     - "bottom"        which is equivalent to `(tile "_*"   "*"  )`
+     - "bottom-left"   which is equivalent to `(tile "_*"   "*_" )`
+     - "bottom-right"  which is equivalent to `(tile "_*"   "_*" )`
+     - "full"          which is equivalent to `(tile "*"    "*"  )`
+   See the documentation for `tile` for more information.
 
-#### `(screen_height )`
-Returns whe height in pixels of the current window's screen.
+#### `(tile-move direction)`
+None
 
-#### `(screen_width )`
-Returns whe width in pixels of the current window's screen.
+#### `(screen-height )`
+Returns the height in pixels of the current window's screen.
+
+#### `(screen-width )`
+Returns the width in pixels of the current window's screen.
 
 #### `(unfullscreen )`
-Make the current window fullscreen, returns True.
+Make the current window not fullscreen, returns True.
 
 #### `(window-index )`
 Returns the index of the window in the taskbar.
