@@ -34,6 +34,7 @@ Angelspie is written in [hy](http://hylang.org/). Any hy function or macro can b
 ## Devilspie compatibility
 
 In `.as` files, there are a few changes from Devilspie syntax made to avoid ugly redefinitions of hy/python reserved words:
+- `geometry` considers coordinates relative to the window's current monitor (i.e. the one with most of the current window on it) unless called with the optional argument :monitor-ref-or-nb, which is an addition to the Devilspie version, or unless `(. *settings* ["ref-frame"])` is set to "screen", which is not the default.
 - `if` has been renamed `dsif` (for Devilspie `if`). The difference with hy's builtin `if` is that the else clause is optional in `dsif`
 - `is` is removed in favor of hy/python's built-in `=`
 - `print` has been renamed `dsprint`
@@ -135,7 +136,7 @@ Focus the current window, returns True.
 #### `(fullscreen )`
 Make the current window fullscreen, returns True.
 
-#### `(geometry geom-str [frame "monitor"])`
+#### `(geometry geom-str)`
 Set position + size (as string) of current window, returns boolean.
    geom-str should be in X-GeometryString format:
     [=][<width>{xX}<height>][{+-}<xoffset>{+-}<yoffset>]
@@ -239,11 +240,29 @@ Returns the workspace the current window is on (Integer).
 Return the X11 window id of the current window (Integer).
 
 ### ADDITIONS TO DEVILSPIE
+#### `(monitor )`
+Returns the connector name of the current window's monitor (i.e. the one that has most of the window in it).
+
 #### `(monitor-height )`
 Returns the height in pixels of the current window's monitor (i.e. the one that has most of the window in it).
 
+#### `(monitor-is-primary )`
+Returns True if the current window's monitor (i.e. the one that has most of the window in it) is primary, False otherwise.
+
 #### `(monitor-width )`
 Returns the width in pixels of the current window's monitor (i.e. the one that has most of the window in it).
+
+#### `(set-monitor monitor-ref-or-direction [preserve-tiling False])`
+Move window to monitor identified by `monitor-ref-or-direction`.
+  `monitor-ref-or-direction` can be one of "left", "right",
+  "up" or "down" relative to the current window's monitor
+  (i.e. the one that has most of the window in it) or it can be
+  the monitor's connector name as defined by Xrandr (ex: "DP1",
+  "HDMI1", etc.
+  If preserve-tiling is true, the tiling pattern last set
+  for this window will be reapplied after moving it to the
+  new monitor.
+  Returns True if move was successful, False otherwise.
 
 #### `(tile [v-pattern "*")`
 Tile the current window according to v-pattern and h-pattern.
@@ -257,8 +276,9 @@ Tile the current window according to v-pattern and h-pattern.
    "screen" tiles relative to the current screen (i.e. potentially multiple
    monitors depending on display setup).
 
-#### `(tile-at direction)`
-Tile the current window. `direction` can be one of :
+#### `(tile-at position)`
+Tile the current window. `position` can be one of :
+     - "last"          resue the last tiling pattern for this particular window
      - "left"          which is equivalent to `(tile "*"    "*_" )`
      - "right"         which is equivalent to `(tile "*"    "_*" )`
      - "top"           which is equivalent to `(tile "*_"   "*"  )`
