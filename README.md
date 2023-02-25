@@ -69,28 +69,31 @@ which will tile the active window right
 `00-screen-conf.as` contains:
 
 ```
-(setv +large-screen+ (> (screen_width) 1000))
-
-(defn my-tile [direction]
-  (global +large-screen+)
-  (if +large-screen+
-    (tile direction 
-          :screen-margin-top "6%"
-          :screen-margin-bottom "4%"
-          :screen-margin-left "2%"
-          :screen-margin-right "2%"
-          :window-margin-horizontal "2%"
-          :window-margin-vertical "3%")
-    (tile direction 
-          :screen-margin-top 34 
-          :screen-margin-bottom 0
-          :screen-margin-left 0
-          :screen-margin-right 0
-          :window-margin-horizontal 0
-          :window-margin-vertical 0)))
+(setting tile-margin-top    (if (> (monitor-width) 1800)
+                                "6%"
+                                (if (monitor-is-primary) 34 0)))
+(setting tile-margin-bottom (if (> (monitor-width) 1800) "4%" 0))
+(setting tile-margin-left   (if (> (monitor-width) 1800) "2%" 0))
+(setting tile-margin-right  (if (> (monitor-width) 1800) "2%" 0))
+(setting tile-col-gap       (if (> (monitor-width) 1800) "2%" 0))
+(setting tile-row-gap       (if (> (monitor-width) 1800) "3%" 0))
 ```
 
 It is loaded both in my keyboard shortcuts and as part of my global Angelspie configuration. This makes tiling adapt to the screen size and work exactly the same at the keyboard and in my Angelspie rules.
+
+## APP specific tricks
+
+### Emacs
+
+Add this at the very beginning of my ~/.emacs/init.el to prevent Emacs from resizing the window after Angelspie does:
+
+`(setq frame-inhibit-implied-resize t) ;; prevent resize window on startup`
+
+
+### Firefox
+
+Angelspie combined with "I Hate Tabs - SDI extension" gives you Firefox with tiling windows instead of tabs.
+
 
 ## API documentation
 

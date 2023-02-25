@@ -14,6 +14,7 @@
 ; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 (import argparse)
+(import enum [Enum])
 (import glob)
 (import math)
 (import os)
@@ -40,16 +41,39 @@
 (setv +config-dir+ (os.path.join (pathlib.Path.home) ".config/angelspie"))
 (setv +last-pattern-shelve+ (os.path.join +config-dir+ "tile_patterns.shelve"))
 
-(setv *settings*
-      {
-      "ref-frame" "monitor"
-      "tile-margin-top" 0
-      "tile-margin-bottom" 0
-      "tile-margin-left" 0
-      "tile-margin-right" 0
-      "tile-col-gap" 0
-      "tile-row-gap" 0
-      })
+;; SETTINGS
+(setv _*settings* {})
+(defmacro setting [varname val-form]
+  `(setv (. _*settings* [~(str varname)] ["fn"])
+         (fn [] ~val-form)))
+
+(defn _getsetting [varname]
+  (setv val ((. _*settings* [varname] ["fn"])))
+  (unless (isinstance val
+                      (. _*settings* [varname] ["type"]))
+    (raise (TypeError f"Invalid type for setting '{varname}': {(type it)}")))
+  val)
+
+(defn _defsetting [varname default valtype]
+  (setv (. _*settings* [varname])
+        {
+          "fn" (fn [] default)
+          "type" valtype
+        }))
+
+(defclass RefFrame [Enum]
+  "Used for setting ref-frame.
+   RefFrame.MONITOR is the default and means that percent values and tile patterns will be relative to the window's current monitor, RefFrame.SCREEN means that percent values and tile patterns will be relative to the whole virtual screen, which might span multiple monitors depending on your setup."
+  (setv MONITOR 0)
+  (setv SCREEN 1))
+
+(_defsetting "ref-frame" RefFrame.MONITOR RefFrame)
+(_defsetting "tile-margin-top"    0 (| int str))
+(_defsetting "tile-margin-bottom" 0 (| int str))
+(_defsetting "tile-margin-left"   0 (| int str))
+(_defsetting "tile-margin-right"  0 (| int str))
+(_defsetting "tile-col-gap"       0 (| int str))
+(_defsetting "tile-row-gap"       0 (| int str))
 
 ;; UTILS
   
@@ -82,10 +106,10 @@
 
 (defn _get-geometry []
   "Return the current window's geometry in the
-   context of the ref_frame set in *settings*."
+   context of the ref_frame set in settings."
   (setv [x y w h] (*current-window*.get-geometry))
-  (when (= (. *settings* ["ref-frame"])
-           "monitor")
+  (when (= (_getsetting "ref-frame")
+           RefFrame.MONITOR)
     (setv monitor-geom
           (. (_get-monitor)
             (get_geometry)))
@@ -131,18 +155,14 @@
   target-monitor)
 
 (defn _hdimension-to-pixels [dimension]
-  (assert (or (= (. *settings* ["ref-frame"]) "screen")
-              (= (. *settings* ["ref-frame"]) "monitor")))
   (_dimension-to-pixels dimension
-                        (if (= (. *settings* ["ref-frame"]) "screen")
+                        (if (= (_getsetting "ref-frame") RefFrame.SCREEN)
                             (screen-width)
                             (monitor-width))))
 
 (defn _vdimension-to-pixels [dimension]
-  (assert (or (= (. *settings* ["ref-frame"]) "screen")
-              (= (. *settings* ["ref-frame"]) "monitor")))
   (_dimension-to-pixels dimension
-                        (if (= (. *settings* ["ref-frame"]) "screen")
+                        (if (= (_getsetting "ref-frame") RefFrame.SCREEN)
                             (screen-height)
                             (monitor-height))))
 
@@ -233,7 +253,7 @@
     (when (and (glob.glob (os.path.join +config-dir+ "*.as"))
                (> (. (_screens-hash) (count "|"))
                   1))
-      (print "Warning: you seem to be using multiple monitors if you have any calls to (geometry) beware that the origin in Angelspie is the top left corner of the current monitor by default. Look at ref-frame in *settings*  if you want to change that"))))
+      (print "Warning: you seem to be using multiple monitors if you have any calls to (geometry) beware that the origin in Angelspie is the top left corner of the current monitor by default. Look at ref-frame in settings  if you want to change that"))))
 
 (defn _window-prospective-workspace [wnck-window]
   "Returns the workspace a window is in or is expected to be in soon due to a call to set_workspace."
@@ -372,7 +392,7 @@
   (setv x (ap-when (.group geom-parts "x") (_hdimension_to-pixels it)))
   (setv y (ap-when (.group geom-parts "y") (_vdimension_to-pixels it)))
   (when (and (= (type x) int)
-             (= (. *settings* ["ref-frame"]) "monitor"))
+             (= (_getsetting "ref-frame") RefFrame.MONITOR))
     (setv monitor-geometry (. (_get-monitor) (get_geometry)))
     (setv x (+ (. monitor-geometry x) (or x 0)))
     (setv y (+ (. monitor-geometry y) (or y 0))))
@@ -598,7 +618,6 @@
   (setv new-y (+ (- current-y (. current-monitor-geom y)) (. target-monitor-geom y)))
   (_insist-on-geometry
     (*current-gdk-window*.move new-x new-y))
-  (print "MONITOR" (monitor_width))
   (when preserve-tiling
     (tile-at "last"))
   (if was-maximized
@@ -607,7 +626,6 @@
           (when was-hmaximized (maximize-horizontally))))
   (return True))
 
-(setv _*tiling-patterns* {})
 (defn tile [[v-pattern "*"]
             [h-pattern "*"]]
   "Tile the current window according to v-pattern and h-pattern.
@@ -616,10 +634,7 @@
    For example, a vertical pattern of _+_ means the window will be in the middle row of
    a screen divided into three sections. A horizontal pattern of + means that
    the window will take the whole screen horizontally.
-   Frame defines what we tile relative to.
-   The default value, \"monitor\" tiles relative to the current monitor.
-   \"screen\" tiles relative to the current screen (i.e. potentially multiple
-   monitors depending on display setup)."
+   Frame defines what we tile relative to (see ref-frame in settings)."
   (unmaximize)
   (unless (_is-valid-tile-pattern v-pattern)
     (print f"Invalid tile pattern: {v-pattern}")
@@ -629,12 +644,12 @@
     (return False))
   (setv rows (len v-pattern))
   (setv cols (len h-pattern))
-  (setv col-gap-px       (_hdimension-to-pixels (. *settings* ["tile-col-gap"])))
-  (setv row-gap-px       (_vdimension-to-pixels (. *settings* ["tile-row-gap"])))
-  (setv margin-left-px   (_hdimension-to-pixels (. *settings* ["tile-margin-left"])))
-  (setv margin-right-px  (_hdimension-to-pixels (. *settings* ["tile-margin-right"])))
-  (setv margin-top-px    (_vdimension-to-pixels (. *settings* ["tile-margin-top"])))
-  (setv margin-bottom-px (_vdimension-to-pixels (. *settings* ["tile-margin-bottom"])))
+  (setv col-gap-px       (_hdimension-to-pixels (_getsetting "tile-col-gap")))
+  (setv row-gap-px       (_vdimension-to-pixels (_getsetting "tile-row-gap")))
+  (setv margin-left-px   (_hdimension-to-pixels (_getsetting "tile-margin-left")))
+  (setv margin-right-px  (_hdimension-to-pixels (_getsetting "tile-margin-right")))
+  (setv margin-top-px    (_vdimension-to-pixels (_getsetting "tile-margin-top")))
+  (setv margin-bottom-px (_vdimension-to-pixels (_getsetting "tile-margin-bottom")))
   (setv frame-width-px   (_hdimension-to-pixels "100%"))
   (setv frame-height-px  (_vdimension-to-pixels "100%"))
   (setv col-width-px (/ (- frame-width-px
@@ -660,7 +675,7 @@
   (setv h (. v-pattern (count "*")))
   (setv h-px (math.floor (* row-height-px h)))
   (ap-with (shelve.open +last-pattern-shelve+)
-    (setv (. it [(str (window_xid))]) [v-pattern h-pattern]))
+    (assoc it (str (window_xid)) [v-pattern h-pattern]))
   (_print-when-verbose f"TILE {w-px}x{h-px}+{x-px}+{y-px}")
   (geometry (str+ w-px "x" h-px "+" x-px "+" y-px)))
 
@@ -671,15 +686,15 @@
 
 (defn tile-at [position]
   "Tile the current window. `position` can be one of :
-     - \"last\"          resue the last tiling pattern for this particular window
+     - \"last\"          resume the last tiling pattern for this particular window
      - \"left\"          which is equivalent to `(tile \"*\"    \"*_\" )`
      - \"right\"         which is equivalent to `(tile \"*\"    \"_*\" )`
-     - \"top\"           which is equivalent to `(tile \"*_\"   \"*\"  )`
-     - \"top-left\"      which is equivalent to `(tile \"*_\"   \"*_\" )`
-     - \"top-right\"     which is equivalent to `(tile \"*_\"   \"_*\" )`
-     - \"center\"        which is equivalent to `(tile \"_**_\" \"_*_\")`
-     - \"center-left\"   which is equivalent to `(tile \"_**_\" \"*_\" )`
-     - \"center-right\"  which is equivalent to `(tile \"_**_\" \"_*\" )`
+     - \"top\"           which is equivalent to `(tile \"_*\"   \"*\"  )`
+     - \"top-left\"      which is equivalent to `(tile \"_*\"   \"*_\" )`
+     - \"top-right\"     which is equivalent to `(tile \"_*\"   \"_*\" )`
+     - \"center\"        which is equivalent to `(tile \"_*_*\" \"__*\")`
+     - \"center-left\"   which is equivalent to `(tile \"_*_*\" \"*_\" )`
+     - \"center-right\"  which is equivalent to `(tile \"_*_*\" \"_*\" )`
      - \"bottom\"        which is equivalent to `(tile \"_*\"   \"*\"  )`
      - \"bottom-left\"   which is equivalent to `(tile \"_*\"   \"*_\" )`
      - \"bottom-right\"  which is equivalent to `(tile \"_*\"   \"_*\" )`
@@ -696,9 +711,9 @@
     "top"          (return (tile "*_"   "*"  ))
     "top-left"     (return (tile "*_"   "*_" ))
     "top-right"    (return (tile "*_"   "_*" ))
-    "center"       (return (tile "_*_"  "_*_"))
-    "center-left"  (return (tile "_**_" "*_" ))
-    "center-right" (return (tile "_**_" "_*" ))
+    "center"       (return (tile "__*"  "__*"))
+    "center-left"  (return (tile "_*_*" "*_" ))
+    "center-right" (return (tile "_*_*" "_*" ))
     "bottom"       (return (tile "_*"   "*"  ))
     "down"         (return (tile "_*"   "*"  ))
     "bottom-left"  (return (tile "_*"   "*_" ))
@@ -722,8 +737,8 @@
                    [(_tile-inc-pattern v-pattern 1) h-pattern])
     else     (do (print f"Invalid direction for tile-move : '{direction}'")
                  (return False)))
-  (when (and (= (. *settings* ["ref-frame"])
-                "monitor")
+  (when (and (= (_getsetting "ref-frame")
+                RefFrame.MONITOR)
              (= new-v-pattern v-pattern)
              (= new-h-pattern h-pattern)
              (_get-monitor direction))
@@ -736,11 +751,15 @@
 
 (defn screen-height []
   "Returns the height in pixels of the current window's screen."
-  (.get_height (.get_screen *current-window*)))
+  (. *current-window*
+     get_screen 
+     get_height))
 
 (defn screen-width []
   "Returns the width in pixels of the current window's screen."
-  (.get_width (.get_screen *current-window*)))
+  (. *current-window*
+     get_screen 
+     get_width))
 
 (defn unfullscreen []
   "Make the current window not fullscreen, returns True."
@@ -782,7 +801,8 @@
 
 ;;  MAIN
 
-(defn _process-window [window]
+(setv *scripts* {})
+(defn _process-window [window [is-second-run False]]
   (global *current-window*
           *current-xwindow*
           *current-gdk-window*)
@@ -790,11 +810,9 @@
   (setv *current-xwindow* (*disp*.create_resource_object "window" (window.get_xid)))
   (setv *current-gdk-window* (GdkX11.X11Window.foreign_new_for_display *gdk-disp* (window.get_xid)))
   (try
-    (for [as-file (if (or *command-line-args*.load *command-line-args*.eval)
-                      *command-line-args*.load
-                      (sorted (glob.glob (os.path.join +config-dir+ "*.as"))))]
-      (_print-when-verbose "== Running" as-file)
-      (hy.eval (hy.read-many (open as-file))))
+    (for [script-name (*scripts*.keys)]
+      (_print-when-verbose "== Running" script-name)
+      (hy.eval (hy.read-many (get *scripts* script-name))))
     (for [eval-str *command-line-args*.eval]
       (hy.eval (hy.read-many eval-str)))
     (except [e [Xlib.error.BadDrawable Xlib.error.BadWindow]]
@@ -812,8 +830,8 @@
     (screen.disconnect (. *connect-handler-ids* [screen])))
   (setv *connect-handler-ids* {})
   (for [screen (_wnck-list-screens)]
-    (setv (. *connect-handler-ids* [screen])
-          (screen.connect "window-opened" _on-new-window))))
+    (assoc *connect-handler-ids*
+           screen (screen.connect "window-opened" _on-new-window))))
 
 (defn _check-screens-and-attach-handler []
   (global *stop-event*)
@@ -830,6 +848,13 @@
       (when (*stop-event*.is-set)
         (return))
       (time.sleep 0.5))))
+
+(defn _load-scripts []
+  (for [as-file (if (or *command-line-args*.load *command-line-args*.eval)
+                      *command-line-args*.load
+                      (sorted (glob.glob (os.path.join +config-dir+ "*.as"))))]
+      (with [as-handle (open as-file)]
+        (setv (get *scripts* as-file) (as-handle.read)))))
 
 (defn _main-loop []
   (global *stop-event*)
@@ -862,6 +887,7 @@
   (_docs)
   (sys.exit 0))
 
+(_load-scripts)
 (if *command-line-args*.eval
   (_process-window (_wnck-get-active-window))
   (_main-loop))
