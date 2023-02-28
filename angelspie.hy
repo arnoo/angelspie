@@ -41,41 +41,43 @@
 (setv +config-dir+ (os.path.join (pathlib.Path.home) ".config/angelspie"))
 (setv +last-pattern-shelve+ (os.path.join +config-dir+ "tile_patterns.shelve"))
 
-;; SETTINGS
-(setv _*settings* {})
-(defmacro setting [varname val-form]
-  `(setv (. _*settings* [~(str varname)] ["fn"])
-         (fn [] ~val-form)))
-
-(defn _getsetting [varname]
-  (setv val ((. _*settings* [varname] ["fn"])))
-  (unless (isinstance val
-                      (. _*settings* [varname] ["type"]))
-    (raise (TypeError f"Invalid type for setting '{varname}': {(type it)}")))
-  val)
-
-(defn _defsetting [varname default valtype]
-  (setv (. _*settings* [varname])
-        {
-          "fn" (fn [] default)
-          "type" valtype
-        }))
-
-(defclass RefFrame [Enum]
-  "Used for setting ref-frame.
-   RefFrame.MONITOR is the default and means that percent values and tile patterns will be relative to the window's current monitor, RefFrame.SCREEN means that percent values and tile patterns will be relative to the whole virtual screen, which might span multiple monitors depending on your setup."
-  (setv MONITOR 0)
-  (setv SCREEN 1))
-
-(_defsetting "ref-frame" RefFrame.MONITOR RefFrame)
-(_defsetting "tile-margin-top"    0 (| int str))
-(_defsetting "tile-margin-bottom" 0 (| int str))
-(_defsetting "tile-margin-left"   0 (| int str))
-(_defsetting "tile-margin-right"  0 (| int str))
-(_defsetting "tile-col-gap"       0 (| int str))
-(_defsetting "tile-row-gap"       0 (| int str))
-
 ;; UTILS
+
+(defmacro _with-window [window #*forms]
+  `(do (global *current-window*
+               *current-xwindow*
+               *current-gdk-window*)
+       (setv *current-window* ~window)
+       (setv *current-xwindow* (*disp*.create_resource_object "window" (. ~window (get_xid))))
+       (setv *current-gdk-window* (GdkX11.X11Window.foreign_new_for_display *gdk-disp* (. ~window (get_xid))))
+       (*gdk-disp*.error_trap_push)
+       (try ~forms
+            (except [e [Xlib.error.BadDrawable Xlib.error.BadWindow]]
+               (_print-when-verbose "Window closed during script execution")
+               (return False)))
+       (ap-when (*gdk-disp*.error_trap_pop)
+         (print "GDK ERROR" it)
+         (return False))))
+
+(setv _*window-callbacks*
+      {
+        "class-changed" {} 
+        "name-changed" {}
+        "icon-changed" {}
+      })
+
+(defn _attach_to_window_event [event-name callback]
+  (unless (and (in (window_xid)
+                   (get _*window-callbacks* event-name))
+               (in callback
+                   (get _*window-callbacks* event-name)))
+    (*current-window*.connect event-name
+                              (fn [win] (_with-window win (callback))))
+    (assoc _*window-callbacks* event-name
+           (if (in (window_xid)
+                   (get _*window-callbacks* event-name))
+                (+ (get _*window-callbacks* event-name) [callback])
+                [callback]))))
   
 (defn _docs []
   "Returns the API docs as Markdown"
@@ -92,7 +94,7 @@
           (print f"#### `({func-name}{func-args})`")
           (if (line.startswith "(defn")
               (print (. (globals) [(hy.mangle func-name)] __doc__))
-              (print (. __macros__ [func-name] __doc__)))
+              (print (. __macros__ [(hy.mangle func-name)] __doc__)))
           (print)))
       (when (line.startswith "; ###")
         (print (cut line 2 -1))))))
@@ -212,19 +214,6 @@
 (defn _not-yet-implemented [fn-name]
   (print f"WARNING: Call to function '{fn-name}' which is not yet implemented."))
 
-(defn _screens-hash []
-  (setv hash "")
-  (for [m (. *disp*
-             (screen)
-             root
-             (xrandr_get_monitors)
-             monitors)]
-      (setv connector (. *disp* (get_atom_name m.name)))
-      (setv hash
-            (+ hash
-               f"{connector}:{m.width_in_pixels}x{m.height_in_pixels}+{m.x}+{m.y}|")))
-  hash)
-
 (defn _tile-inc-pattern [pattern increment]
   (if (> increment 0)
     (if (pattern.endswith "*")
@@ -249,11 +238,7 @@
       (setv as-file (re.sub "\\.ds$" ".as" ds-file))
       (setv as-file (re.sub "^.*/\\.devilspie" (str +config-dir+) as-file))
       (with [as-handle (open as-file "w")]
-        (as-handle.write script)))
-    (when (and (glob.glob (os.path.join +config-dir+ "*.as"))
-               (> (. (_screens-hash) (count "|"))
-                  1))
-      (print "Warning: you seem to be using multiple monitors if you have any calls to (geometry) beware that the origin in Angelspie is the top left corner of the current monitor by default. Look at ref-frame in settings  if you want to change that"))))
+        (as-handle.write script)))))
 
 (defn _window-prospective-workspace [wnck-window]
   "Returns the workspace a window is in or is expected to be in soon due to a call to set_workspace."
@@ -370,7 +355,7 @@
     [=][<width>{xX}<height>][{+-}<xoffset>{+-}<yoffset>]
    as an extension to the X-GeometryString format, all values
    can be specified as percentages of screen/monitor size. For
-   percentages of screen size, set frame to \"monitor\"
+   percentages of screen size, set setting \"ref-frame\" to RefFrame.SCREEN
    Examples:
        (geometry \"400×300+0-22\")
        (geometry \"640×480\")
@@ -466,14 +451,16 @@
   (*current-window*.shade)
   True)
 
-(defn skip_pager []
-  "Remove the current window from the window list, returns True."
-  (*current-window*.set_skip_pager True)
+(defn skip_pager [[active True]]
+  "Remove the current window from the window list, returns True.
+   If passed active=False, puts the window back in the window list."
+  (*current-window*.set_skip_pager active)
   True)
 
-(defn skip_tasklist []
-  "Remove the current window from the pager, returns True."
-  (*current-window*.set_skip_tasklist True)
+(defn skip_tasklist [[active True]]
+  "Remove the current window from the pager, returns True.
+   If passed active=False, puts the window back in the pager."
+  (*current-window*.set_skip_tasklist active)
   True)
 
 (defn spawn_async [#*cmd]
@@ -539,7 +526,7 @@
 
 (defn window_name []
   "Return the title of the current window (String)."
-  (str (*current-xwindow*.get_wm_name)))
+  (str (*current-window*.get_name)))
 
 (defn window_property [prop-name]
   "Returns the given property of the window, e.g. pass '_NET_WM_STATE' (String)."
@@ -563,6 +550,41 @@
 
 ; ### ADDITIONS TO DEVILSPIE
 
+(setv _*settings* {})
+(defmacro setting [varname value]
+  "Set Angelspie setting <varname> to the result of evaluating val-form
+   in each window/monitor/etc. context where the setting is needed."
+  `(setv (. _*settings* [~(str varname)] ["fn"])
+         (fn [] ~val-form)))
+
+(defn _getsetting [varname]
+  (setv val ((. _*settings* [varname] ["fn"])))
+  (unless (isinstance val
+                      (. _*settings* [varname] ["type"]))
+    (raise (TypeError f"Invalid type for setting '{varname}': {(type it)}")))
+  val)
+
+(defn _defsetting [varname default valtype]
+  (setv (. _*settings* [varname])
+        {
+          "fn" (fn [] default)
+          "type" valtype
+        }))
+
+(defclass RefFrame [Enum]
+  "Used for setting ref-frame.
+   RefFrame.MONITOR is the default and means that percent values and tile patterns will be relative to the window's current monitor, RefFrame.SCREEN means that percent values and tile patterns will be relative to the whole virtual screen, which might span multiple monitors depending on your setup."
+  (setv MONITOR 0)
+  (setv SCREEN 1))
+
+(_defsetting "ref-frame" RefFrame.MONITOR RefFrame)
+(_defsetting "tile-margin-top"    0 (| int str))
+(_defsetting "tile-margin-bottom" 0 (| int str))
+(_defsetting "tile-margin-left"   0 (| int str))
+(_defsetting "tile-margin-right"  0 (| int str))
+(_defsetting "tile-col-gap"       0 (| int str))
+(_defsetting "tile-row-gap"       0 (| int str))
+
 (defn monitor []
   "Returns the connector name of the current window's monitor (i.e. the one that has most of the window in it)."
   (setv gdk-monitor-geom (. (_get-monitor) (get_geometry)))
@@ -575,6 +597,10 @@
                 (= m.y gdk-monitor-geom.y))
        (return (. *disp* (get_atom_name m.name))))))
   
+(defn monitor-connected [connector-name]
+  "Returns True if monitor with connector connector-name is connected, false otherwise"
+  (bool (_get-xmonitor-by-connector-name connector-name)))
+
 (defn monitor-height []
   "Returns the height in pixels of the current window's monitor (i.e. the one that has most of the window in it)."
   (. (_get-monitor)
@@ -591,6 +617,18 @@
   (. (_get-monitor)
      (get_geometry)
      width))
+
+(defmacro on-class-change [#*args]
+  "Attaches <callback> to class changes on the current window."
+  `(_attach_to_window_event "class-changed" (fn [] ~args)))
+
+(defmacro on-icon-change [#*args]
+  "Attaches <callback> to icon changes on the current window."
+  `(_attach_to_window_event "icon-changed" (fn [] ~args)))
+
+(defmacro on-name-change [#*args]
+  "Attaches <callback> to name changes on the current window."
+  `(_attach_to_window_event "name-changed" (fn [] ~args)))
 
 (defn set-monitor [monitor-ref-or-direction [preserve-tiling False]]
   "Move window to monitor identified by `monitor-ref-or-direction`.
@@ -723,6 +761,8 @@
                        (return False))))
 
 (defn tile-move [direction]
+  "Move the current window in <direction> within
+   its current tiling pattern."
   (ap-if (_last-tiling-pattern)
     (setv [v-pattern h-pattern] it)
     (return (tile-at direction)))
@@ -752,14 +792,14 @@
 (defn screen-height []
   "Returns the height in pixels of the current window's screen."
   (. *current-window*
-     get_screen 
-     get_height))
+     (get_screen)
+     (get_height)))
 
 (defn screen-width []
   "Returns the width in pixels of the current window's screen."
   (. *current-window*
-     get_screen 
-     get_width))
+     (get_screen)
+     (get_width)))
 
 (defn unfullscreen []
   "Make the current window not fullscreen, returns True."
@@ -803,51 +843,28 @@
 
 (setv *scripts* {})
 (defn _process-window [window [is-second-run False]]
-  (global *current-window*
-          *current-xwindow*
-          *current-gdk-window*)
-  (setv *current-window* window)
-  (setv *current-xwindow* (*disp*.create_resource_object "window" (window.get_xid)))
-  (setv *current-gdk-window* (GdkX11.X11Window.foreign_new_for_display *gdk-disp* (window.get_xid)))
-  (try
+  (_with-window window
     (for [script-name (*scripts*.keys)]
       (_print-when-verbose "== Running" script-name)
       (hy.eval (hy.read-many (get *scripts* script-name))))
     (for [eval-str *command-line-args*.eval]
-      (hy.eval (hy.read-many eval-str)))
-    (except [e [Xlib.error.BadDrawable Xlib.error.BadWindow]]
-      (_print-when-verbose "Window closed during script execution")
-      (return False))))
+      (hy.eval (hy.read-many eval-str)))))
+
+(defn _on-monitors-changed [screen]
+  (_print-when-verbose "NEW SCREEN CONFIG, RESTARTING ++++++")
+  (list (map _process-window (_wnck-list-windows))))
 
 (defn _on-new-window [screen window]
-  (_print-when-verbose "ON NEW WINDOW ++++++")
+  (_print-when-verbose "NEW WINDOW ++++++")
   (_process-window window))
 
-(setv *connect-handler-ids* {})
-(defn _reattach-handler-to-all-screens []
-  (global *connect-handler-ids*)
-  (for [screen (*connect-handler-ids*.keys)]
-    (screen.disconnect (. *connect-handler-ids* [screen])))
-  (setv *connect-handler-ids* {})
-  (for [screen (_wnck-list-screens)]
-    (assoc *connect-handler-ids*
-           screen (screen.connect "window-opened" _on-new-window))))
-
-(defn _check-screens-and-attach-handler []
-  (global *stop-event*)
-  (setv previous-screens-hash "")
-  (while True
-    (setv new-screens-hash (_screens-hash))
-    (unless (= new-screens-hash previous-screens-hash)
-      (unless (= "" previous-screens-hash)
-        (_print-when-verbose "NEW SCREEN CONFIG, RESTARTING ++++++")
-        (map _process-window (_wnck-list-windows)))
-      (setv previous-screens-hash new-screens-hash)
-      (_reattach-handler-to-all-screens))
-    (do-n 6
-      (when (*stop-event*.is-set)
-        (return))
-      (time.sleep 0.5))))
+(defn _attach-handler-to-all-screens []
+  (for [wnck-screen (_wnck-list-screens)]
+    (wnck-screen.connect "window-opened" _on-new-window))
+  (for [gdk-screen-nb (range (*gdk-disp*.get_n_screens))]
+    (. *gdk-disp*
+       (get_screen gdk-screen-nb)
+       (connect "monitors-changed" _on-monitors-changed))))
 
 (defn _load-scripts []
   (for [as-file (if (or *command-line-args*.load *command-line-args*.eval)
@@ -857,24 +874,18 @@
         (setv (get *scripts* as-file) (as-handle.read)))))
 
 (defn _main-loop []
-  (global *stop-event*)
   (_try-to-build-config-from-devilspie-if-we-have-none)
   (when (and (not (glob.glob (os.path.join +config-dir+ "*.as")))
              (not *command-line-args*.load))
     (print "No configuration file found and none specified in command-line")
     (sys.exit 1))
-  (setv *stop-event* (threading.Event))
   (. (pathlib.Path +last-pattern-shelve+)
      (unlink :missing_ok True))
-  (setv screen-checker-thread
-        (threading.Thread :target _check-screens-and-attach-handler
-                          :daemon True))
-  (screen-checker-thread.start)
+  (_attach-handler-to-all-screens)
   (GLib.unix_signal_add
     GLib.PRIORITY_DEFAULT
     signal.SIGINT
     (fn []
-      (*stop-event*.set)
       (Wnck.shutdown)
       (Gtk.main_quit)))
   (Gtk.main))

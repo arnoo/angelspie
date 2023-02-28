@@ -29,6 +29,8 @@
   (test-fct center)
   (test-fct skip_pager)
   (test-fct skip_tasklist)
+  (test-fct skip_pager False)
+  (test-fct skip_tasklist False)
   (test-fct undecorate)
   (test-fct decorate)
   (test-fct fullscreen)

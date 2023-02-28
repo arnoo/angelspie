@@ -13,35 +13,37 @@ Angelspie reads any `.as` file in `~/.config/angelspie` and runs it in the conte
 Here's an example `.as` script that shows a few possibilities:
 
 ```
-(when (= (window_class) "Calendar")
-  (set_workspace 3)
+(when (= (window-class) "Calendar")
+  (set-workspace 3)
   (undecorate)
-  (tile "center-right"))
+  (tile-at "center-right"))
 
-(when (= (window_class) "Pidgin")
-  (spawn_async "xseticon" "-id" (window_xid) "/usr/share/icons/hicolor/48x48/apps/pidgin.png")
-  (if (= (window_name) "Buddy List")
+(when (= (window-class) "Pidgin")
+  (spawn_async "xseticon" "-id" (window-xid) "/usr/share/icons/hicolor/48x48/apps/pidgin.png")
+  (if (= (window-name) "Buddy List")
     (geometry "403x675+47+78")
     (geometry "1008x675+496+78")))
 
-(when (or (= (window_class) "Gitlab-board")
-          (= (window_class) "JIRA-board"))
-  (tile "full"))
+(when (in (window_class)
+          ["Gitlab-board" "JIRA-board"])
+  (tile-at "full")
+  (when (monitor-connected "DP1")
+    (set-monitor "DP1")
+    (pin)))
 ```
 
-Angelspie is written in [hy](http://hylang.org/). Any hy function or macro can be used in the configuration scripts.
+Angelspie is written in [Hy](http://hylang.org/) and so are its configuration files. Any Hy function or macro can be used in the configuration scripts. This means that you can do anything you can do with Python and more.
 
 ## Devilspie compatibility
 
-In `.as` files, there are a few changes from Devilspie syntax made to avoid ugly redefinitions of hy/python reserved words:
-- `geometry` considers coordinates relative to the window's current monitor (i.e. the one with most of the current window on it) unless called with the optional argument :monitor-ref-or-nb, which is an addition to the Devilspie version, or unless `(. *settings* ["ref-frame"])` is set to "screen", which is not the default.
-- `if` has been renamed `dsif` (for Devilspie `if`). The difference with hy's builtin `if` is that the else clause is optional in `dsif`
-- `is` is removed in favor of hy/python's built-in `=`
+In `.as` files, there are a few changes from Devilspie syntax made to avoid ugly redefinitions of Hy reserved words:
+- `geometry` considers coordinates relative to the window's current monitor (i.e. the one with most of the current window on it) unless you set `(settings ref-frame RefFrame.SCREEN)`
+- `if` has been renamed `dsif` (for Devilspie `if`). The difference with Hy's builtin `if` is that the else clause is optional in `dsif`
+- `is` is removed in favor of Hy's built-in `=`
 - `print` has been renamed `dsprint`
 - `str` has been renamed `str+`
 
 The following Devilspie functions are as of yet unimplemented:
-- `center`
 - `opacity`
 - `set_viewport`
 - `stick`
@@ -49,7 +51,11 @@ The following Devilspie functions are as of yet unimplemented:
 - `wintype`
 - `window_role`
 
- You'll get a warning when your configuration script calls an undefined function. I welcome pull requests in the hope of making this at some point a complete drop-in replacement for Devilspie.
+You'll get a warning when your configuration script calls an undefined function. I welcome pull requests in the hope of making this at some point a complete drop-in replacement for Devilspie.
+
+`skip_pager` and `skip_tasklist` can be called with a boolean to toggle skipping of pager/tasklist.
+
+In Hy variable/function names `_` and `-` are the same, so `skip_pager` for instance can be called `skip-pager`, which is more lispy.
 
 
 ## Running
@@ -63,8 +69,8 @@ You can specify `.as` scripts or even code for Angelspie to evaluate.
 Code passed to `--eval` is evaluated in the context of the active window.
 
 For example, I have this bound to Super+Right in my desktop environment:
-`pipenv run hy angelspie.hy --load=${HOME}/.config/angelspie/00-screen-conf.as --eval='(my-tile "right")'`
-which will tile the active window right
+`pipenv run hy angelspie.hy --load=${HOME}/.config/angelspie/00-screen-conf.as --eval='(tile-at "right")'`
+which will tile the active window right.
 
 `00-screen-conf.as` contains:
 
@@ -85,7 +91,7 @@ It is loaded both in my keyboard shortcuts and as part of my global Angelspie co
 
 ### Emacs
 
-Add this at the very beginning of my ~/.emacs/init.el to prevent Emacs from resizing the window after Angelspie does:
+Add this at the very beginning of your ~/.emacs/init.el to prevent Emacs from resizing the window after Angelspie does:
 
 `(setq frame-inhibit-implied-resize t) ;; prevent resize window on startup`
 
@@ -145,7 +151,7 @@ Set position + size (as string) of current window, returns boolean.
     [=][<width>{xX}<height>][{+-}<xoffset>{+-}<yoffset>]
    as an extension to the X-GeometryString format, all values
    can be specified as percentages of screen/monitor size. For
-   percentages of screen size, set frame to "monitor"
+   percentages of screen size, set setting "ref-frame" to RefFrame.SCREEN
    Examples:
        (geometry "400×300+0-22")
        (geometry "640×480")
@@ -185,11 +191,13 @@ Move the window to a specific workspace number, counting from 1, returns boolean
 #### `(shade )`
 Shade ('roll up') the current window, returns True.
 
-#### `(skip_pager )`
+#### `(skip_pager [active True])`
 Remove the current window from the window list, returns True.
+   If passed active=False, puts the window back in the window list.
 
-#### `(skip_tasklist )`
+#### `(skip_tasklist [active True])`
 Remove the current window from the pager, returns True.
+   If passed active=False, puts the window back in the pager.
 
 #### `(spawn_async #*cmd)`
 Execute a command in the background, returns boolean. Command is given as a single string, or as a series of strings (similar to execl).
@@ -243,8 +251,15 @@ Returns the workspace the current window is on (Integer).
 Return the X11 window id of the current window (Integer).
 
 ### ADDITIONS TO DEVILSPIE
+#### `(setting varname value)`
+Set Angelspie setting <varname> to the result of evaluating val-form
+   in each window/monitor/etc. context where the setting is needed.
+
 #### `(monitor )`
 Returns the connector name of the current window's monitor (i.e. the one that has most of the window in it).
+
+#### `(monitor-connected connector-name)`
+Returns True if monitor with connector connector-name is connected, false otherwise
 
 #### `(monitor-height )`
 Returns the height in pixels of the current window's monitor (i.e. the one that has most of the window in it).
@@ -254,6 +269,15 @@ Returns True if the current window's monitor (i.e. the one that has most of the 
 
 #### `(monitor-width )`
 Returns the width in pixels of the current window's monitor (i.e. the one that has most of the window in it).
+
+#### `(on-class-change #*args)`
+Attaches <callback> to class changes on the current window.
+
+#### `(on-icon-change #*args)`
+Attaches <callback> to icon changes on the current window.
+
+#### `(on-name-change #*args)`
+Attaches <callback> to name changes on the current window.
 
 #### `(set-monitor monitor-ref-or-direction [preserve-tiling False])`
 Move window to monitor identified by `monitor-ref-or-direction`.
@@ -274,22 +298,19 @@ Tile the current window according to v-pattern and h-pattern.
    For example, a vertical pattern of _+_ means the window will be in the middle row of
    a screen divided into three sections. A horizontal pattern of + means that
    the window will take the whole screen horizontally.
-   Frame defines what we tile relative to.
-   The default value, "monitor" tiles relative to the current monitor.
-   "screen" tiles relative to the current screen (i.e. potentially multiple
-   monitors depending on display setup).
+   Frame defines what we tile relative to (see ref-frame in settings).
 
 #### `(tile-at position)`
 Tile the current window. `position` can be one of :
-     - "last"          resue the last tiling pattern for this particular window
+     - "last"          resume the last tiling pattern for this particular window
      - "left"          which is equivalent to `(tile "*"    "*_" )`
      - "right"         which is equivalent to `(tile "*"    "_*" )`
-     - "top"           which is equivalent to `(tile "*_"   "*"  )`
-     - "top-left"      which is equivalent to `(tile "*_"   "*_" )`
-     - "top-right"     which is equivalent to `(tile "*_"   "_*" )`
-     - "center"        which is equivalent to `(tile "_**_" "_*_")`
-     - "center-left"   which is equivalent to `(tile "_**_" "*_" )`
-     - "center-right"  which is equivalent to `(tile "_**_" "_*" )`
+     - "top"           which is equivalent to `(tile "_*"   "*"  )`
+     - "top-left"      which is equivalent to `(tile "_*"   "*_" )`
+     - "top-right"     which is equivalent to `(tile "_*"   "_*" )`
+     - "center"        which is equivalent to `(tile "_*_*" "__*")`
+     - "center-left"   which is equivalent to `(tile "_*_*" "*_" )`
+     - "center-right"  which is equivalent to `(tile "_*_*" "_*" )`
      - "bottom"        which is equivalent to `(tile "_*"   "*"  )`
      - "bottom-left"   which is equivalent to `(tile "_*"   "*_" )`
      - "bottom-right"  which is equivalent to `(tile "_*"   "_*" )`
@@ -297,7 +318,8 @@ Tile the current window. `position` can be one of :
    See the documentation for `tile` for more information.
 
 #### `(tile-move direction)`
-None
+Move the current window in <direction> within
+   its current tiling pattern.
 
 #### `(screen-height )`
 Returns the height in pixels of the current window's screen.
