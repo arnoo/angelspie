@@ -14,7 +14,7 @@ Angelspie reads any `.as` file in `~/.config/angelspie` and runs it in the conte
 
 Here's an example `.as` script that shows a few possibilities:
 
-```
+```hy
 (when (= (window-class) "Calendar")
   (set-workspace 3)
   (undecorate)
@@ -76,7 +76,7 @@ which will tile the active window right.
 
 `00-screen-conf.as` contains:
 
-```
+```hy
 (setting tile-margin-top    (if (> (monitor-width) 1800)
                                 "6%"
                                 (if (monitor-is-primary) 34 0)))
@@ -106,31 +106,31 @@ Angelspie combined with "I Hate Tabs - SDI extension" gives you Firefox with til
 ## API documentation
 
 ### DEVILSPIE FUNCTIONS/MACROS
-#### `(application_name )`
+#### `(application_name)`
 Return the application name (as determined by libwnck) of the current window (String).
 
-#### `(above )`
+#### `(above)`
 Set the current window to be above all normal windows, returns True.
 
 #### `(begin #*forms)`
 The devilspie equivalent of Hy's `do` : evaluates all the function calls within, returns the result of the last evaluation.
 
-#### `(below )`
+#### `(below)`
 Set the current window to be below all normal windows, returns True.
 
-#### `(center )`
+#### `(center)`
 Center position of current window, returns boolean.
 
-#### `(close )`
+#### `(close)`
 Close the current window, returns True.
 
 #### `(contains string substring)`
 True if string contains substring.
 
-#### `(debug )`
+#### `(debug)`
 Debugging function, outputs the current window's title, name, role and geometry (Returns TRUE).
 
-#### `(decorate )`
+#### `(decorate)`
 Add the window manager decorations to the current window, returns boolean.
 
 #### `(dsif cond-clause then-clause [else-clause None])`
@@ -141,24 +141,24 @@ Equivalent to Devilspie's if. Like Hy's builtin if, but the else clause is optio
 Equivalent to Devilspie's print.
    Print args without trailing newline, returns boolean.
 
-#### `(focus )`
+#### `(focus)`
 Focus the current window, returns True.
 
-#### `(fullscreen )`
+#### `(fullscreen)`
 Make the current window fullscreen, returns True.
 
 #### `(geometry geom-str)`
 Set position + size (as string) of current window, returns boolean.
    geom-str should be in X-GeometryString format:
-    [=][<width>{xX}<height>][{+-}<xoffset>{+-}<yoffset>]
+    `[=][<width>{xX}<height>][{+-}<xoffset>{+-}<yoffset>]`
    as an extension to the X-GeometryString format, all values
    can be specified as percentages of screen/monitor size. For
    percentages of screen size, set setting "ref-frame" to RefFrame.SCREEN
    Examples:
-       (geometry "400×300+0-22")
-       (geometry "640×480")
-       (geometry "100%×50%+0+0")
-       (geometry "+10%+10%")
+       `(geometry "400×300+0-22")`
+       `(geometry "640×480")`
+       `(geometry "100%×50%+0+0")`
+       `(geometry "+10%+10%")`
 
 #### `(matches string pattern)`
 True if the regexp pattern matches str
@@ -166,19 +166,19 @@ True if the regexp pattern matches str
 #### `(opacity level)`
 Change the opacity level (as integer in 0..100) of the current window, returns boolean.
 
-#### `(maximize )`
+#### `(maximize)`
 Maximise the current window, returns True.
 
-#### `(maximize_vertically )`
+#### `(maximize_vertically)`
 Maximise vertically the current window, returns True.
 
-#### `(maximize_horizontally )`
+#### `(maximize_horizontally)`
 Maximise horizontally the current window, returns True.
 
-#### `(minimize )`
+#### `(minimize)`
 Minimise the current window, returns True.
 
-#### `(pin )`
+#### `(pin)`
 Pin the current window to all workspaces, returns True.
 
 #### `(println #*args)`
@@ -190,86 +190,86 @@ Move the window to a specific viewport number, counting from 1, returns boolean.
 #### `(set_workspace workspace-nb)`
 Move the window to a specific workspace number, counting from 1, returns boolean.
 
-#### `(shade )`
+#### `(shade)`
 Shade ('roll up') the current window, returns True.
 
 #### `(skip_pager [active True])`
 Remove the current window from the window list, returns True.
-   If passed active=False, puts the window back in the window list.
+   If passed `active=False`, puts the window back in the window list.
 
 #### `(skip_tasklist [active True])`
 Remove the current window from the pager, returns True.
-   If passed active=False, puts the window back in the pager.
+   If passed `active=False`, puts the window back in the pager.
 
 #### `(spawn_async #*cmd)`
 Execute a command in the background, returns boolean. Command is given as a single string, or as a series of strings (similar to execl).
 
 #### `(spawn_sync #*cmd)`
-Execute  a  command in the foreground (returns command output as string, or FALSE on error). Command is given as a single string, or as a series of strings (similar to execl).
+Execute  a  command in the foreground (returns command output as string, or `False` on error). Command is given as a single string, or as a series of strings (similar to execl).
 
-#### `(stick )`
+#### `(stick)`
 Make the current window stick to all viewports, returns True.
 
 #### `(str+ #*args)`
 Transform parameters into strings and concat them with spaces in between.
 
-#### `(undecorate )`
+#### `(undecorate)`
 Remove the window manager decorations from the current window, returns boolean.
 
-#### `(unmaximize )`
+#### `(unmaximize)`
 Un-maximise the current window, returns True.
 
-#### `(unminimize )`
+#### `(unminimize)`
 Un-minimise the current window, returns True.
 
-#### `(unpin )`
+#### `(unpin)`
 Unpin the current window from all workspaces, returns True.
 
-#### `(unshade )`
+#### `(unshade)`
 Un-shade ('roll down') the current window, returns True.
 
-#### `(unstick )`
+#### `(unstick)`
 Unstick the window from viewports, returns True.
 
 #### `(wintype type)`
 Set the window type of the current window, returns boolean. Accepted values are: normal, dialog, menu, toolbar, splashscreen, utility, dock, desktop.
 
-#### `(window_class )`
+#### `(window_class)`
 Return the class of the current window (String).
 
-#### `(window_name )`
+#### `(window_name)`
 Return the title of the current window (String).
 
 #### `(window_property prop-name)`
 Returns the given property of the window, e.g. pass '_NET_WM_STATE' (String).
 
-#### `(window_role )`
+#### `(window_role)`
 Return the role (as determined by the WM_WINDOW_ROLE hint) of the current window (String).
 
-#### `(window_workspace )`
+#### `(window_workspace)`
 Returns the workspace the current window is on (Integer).
 
-#### `(window_xid )`
+#### `(window_xid)`
 Return the X11 window id of the current window (Integer).
 
 ### ADDITIONS TO DEVILSPIE
-#### `(setting varname value)`
+#### `(setting varname val-form)`
 Set Angelspie setting <varname> to the result of evaluating val-form
    in each window/monitor/etc. context where the setting is needed.
 
-#### `(monitor )`
+#### `(monitor)`
 Returns the connector name of the current window's monitor (i.e. the one that has most of the window in it).
 
 #### `(monitor-connected connector-name)`
 Returns True if monitor with connector connector-name is connected, false otherwise
 
-#### `(monitor-height )`
+#### `(monitor-height)`
 Returns the height in pixels of the current window's monitor (i.e. the one that has most of the window in it).
 
-#### `(monitor-is-primary )`
-Returns True if the current window's monitor (i.e. the one that has most of the window in it) is primary, False otherwise.
+#### `(monitor-is-primary)`
+Returns `True` if the current window's monitor (i.e. the one that has most of the window in it) is primary, `False` otherwise.
 
-#### `(monitor-width )`
+#### `(monitor-width)`
 Returns the width in pixels of the current window's monitor (i.e. the one that has most of the window in it).
 
 #### `(on-class-change #*args)`
@@ -291,7 +291,7 @@ Move window to monitor identified by `monitor-ref-or-direction`.
   If preserve-tiling is true, the tiling pattern last set
   for this window will be reapplied after moving it to the
   new monitor.
-  Returns True if move was successful, False otherwise.
+  Returns `True` if move was successful, `False` otherwise.
 
 #### `(tile [v-pattern "*")`
 Tile the current window according to v-pattern and h-pattern.
@@ -323,23 +323,24 @@ Tile the current window. `position` can be one of :
 Move the current window in <direction> within
    its current tiling pattern.
 
-#### `(screen-height )`
+#### `(screen-height)`
 Returns the height in pixels of the current window's screen.
 
-#### `(screen-width )`
+#### `(screen-width)`
 Returns the width in pixels of the current window's screen.
 
-#### `(unfullscreen )`
+#### `(unfullscreen)`
 Make the current window not fullscreen, returns True.
 
-#### `(window-index )`
+#### `(window-index)`
 Returns the index of the window in the taskbar.
 
-#### `(window-index-in-class )`
+#### `(window-index-in-class)`
 Returns the index of the window in the taskbar, counting only the windows of the same class.
 
-#### `(window-index-in-workspace )`
+#### `(window-index-in-workspace)`
 Returns the index of the window in the taskbar, counting only the windows of the same workspace.
 
 #### `(window-type type)`
 Set the window type of the current window, returns boolean. Accepted values are: normal, dialog, menu, toolbar, splashscreen, utility, dock, desktop.
+

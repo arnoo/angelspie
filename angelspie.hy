@@ -91,6 +91,8 @@
             (if (= func-args "[]")
                 ""
                 (+ " " (cut func-args 1 -2))))
+          (when (= func-args " ")
+            (setv func-args ""))
           (print f"#### `({func-name}{func-args})`")
           (if (line.startswith "(defn")
               (print (. (globals) [(hy.mangle func-name)] __doc__))
@@ -354,15 +356,15 @@
 (defn geometry [geom-str]
   "Set position + size (as string) of current window, returns boolean.
    geom-str should be in X-GeometryString format:
-    [=][<width>{xX}<height>][{+-}<xoffset>{+-}<yoffset>]
+    `[=][<width>{xX}<height>][{+-}<xoffset>{+-}<yoffset>]`
    as an extension to the X-GeometryString format, all values
    can be specified as percentages of screen/monitor size. For
    percentages of screen size, set setting \"ref-frame\" to RefFrame.SCREEN
    Examples:
-       (geometry \"400×300+0-22\")
-       (geometry \"640×480\")
-       (geometry \"100%×50%+0+0\")
-       (geometry \"+10%+10%\")"
+       `(geometry \"400×300+0-22\")`
+       `(geometry \"640×480\")`
+       `(geometry \"100%×50%+0+0\")`
+       `(geometry \"+10%+10%\")`"
   (setv dim_re "\\d+\\%{0,1}")
   (setv size_re "[+-]\\d+\\%{0,1}")
   (setv geom-parts
@@ -455,13 +457,13 @@
 
 (defn skip_pager [[active True]]
   "Remove the current window from the window list, returns True.
-   If passed active=False, puts the window back in the window list."
+   If passed `active=False`, puts the window back in the window list."
   (*current-window*.set_skip_pager active)
   True)
 
 (defn skip_tasklist [[active True]]
   "Remove the current window from the pager, returns True.
-   If passed active=False, puts the window back in the pager."
+   If passed `active=False`, puts the window back in the pager."
   (*current-window*.set_skip_tasklist active)
   True)
 
@@ -472,7 +474,7 @@
   (subprocess.Popen ["bash" "-c" string-cmd]))
 
 (defn spawn_sync [#*cmd]
-  "Execute  a  command in the foreground (returns command output as string, or FALSE on error). Command is given as a single string, or as a series of strings (similar to execl)."
+  "Execute  a  command in the foreground (returns command output as string, or `False` on error). Command is given as a single string, or as a series of strings (similar to execl)."
   (setv string-cmd (.join " " (map str cmd)))
   (_print-when-verbose "spawn" string-cmd)
   (.decode (. (subprocess.run ["bash" "-c" string-cmd] :stdout subprocess.PIPE)
@@ -610,7 +612,7 @@
      height))
 
 (defn monitor-is-primary []
-  "Returns True if the current window's monitor (i.e. the one that has most of the window in it) is primary, False otherwise."
+  "Returns `True` if the current window's monitor (i.e. the one that has most of the window in it) is primary, `False` otherwise."
   (. (_get-monitor)
      (is_primary)))
 
@@ -642,7 +644,7 @@
   If preserve-tiling is true, the tiling pattern last set
   for this window will be reapplied after moving it to the
   new monitor.
-  Returns True if move was successful, False otherwise."
+  Returns `True` if move was successful, `False` otherwise."
   (setv was-maximized (*current-window*.is-maximized))
   (setv was-vmaximized (*current-window*.is-maximized-vertically))
   (setv was-hmaximized (*current-window*.is-maximized-horizontally))
