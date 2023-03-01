@@ -120,6 +120,8 @@
   [x y w h])
 
 (defn _get-xmonitor-by-connector-name [connector-name]
+  ;TODO ability to filter by EDID : = XInternAtom (disp, RR_PROPERTY_RANDR_EDID, FALSE);
+  ; so that we can use (monitor-connected "DP1" :edid "XXXXXXXXX")
   (for [m (. *disp*
              (screen)
              root
@@ -551,7 +553,7 @@
 ; ### ADDITIONS TO DEVILSPIE
 
 (setv _*settings* {})
-(defmacro setting [varname value]
+(defmacro setting [varname val-form]
   "Set Angelspie setting <varname> to the result of evaluating val-form
    in each window/monitor/etc. context where the setting is needed."
   `(setv (. _*settings* [~(str varname)] ["fn"])
