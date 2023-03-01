@@ -1,3 +1,5 @@
+![Angelspie logo](https://github.com/arnoo/angelspie/blob/master/logo/readme_header.png?raw=true)
+
 Angelspie is a tool to apply rules to windows on Linux: placement, workspace, tiling, decorations… based on window name, class, role…
 
 Angelspie is intended as a drop-in replacement for Devilspie which is unmaintained and now segfaults way too often.
