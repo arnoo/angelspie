@@ -15,6 +15,8 @@
 
 (import argparse)
 (import enum [Enum])
+(import favicon)
+(import functools)
 (import glob)
 (import math)
 (import os)
@@ -24,6 +26,7 @@
 (pgi.require_version "Gtk" "3.0")
 (pgi.require_version "Wnck" "3.0")
 (import pgi.repository [GdkX11 GLib Gtk Wnck])
+(import pyatspi)
 (import re)
 (import shelve)
 (import signal)
@@ -108,6 +111,14 @@
                      100))
       (int dimension)))
 
+(defn [functools.cache] _favicon-for-url [url [use-full-url False]]
+  (for [icon (favicon.get (if use-full-url
+			      url
+			      (. "/" (join (cut (url.split "/" 4) 0 3)))))]
+    (when (and (= (. icon format) "png")
+               (>= (. icon width) 32))
+      (return (. icon url)))))
+
 (defn _get-geometry []
   "Return the current window's geometry in the
    context of the ref_frame set in settings."
@@ -124,6 +135,9 @@
 (defn _get-xmonitor-by-connector-name [connector-name]
   ;TODO ability to filter by EDID : = XInternAtom (disp, RR_PROPERTY_RANDR_EDID, FALSE);
   ; so that we can use (monitor-connected "DP1" :edid "XXXXXXXXX")
+  ;     output_info = randr.randr_get_output_info(root, output, Xlib.X.CurrentTime)
+  ; edid_property = [prop for prop in output_info.properties if prop.name == b'EDID'][0]
+  ; edid_data = edid_property.data
   (for [m (. *disp*
              (screen)
              root
@@ -403,6 +417,16 @@
 	;	my_wnck_atom_get ("_NET_WM_WINDOW_OPACITY"),
 	;	XA_CARDINAL, 32, PropModeReplace, (guchar *)&v, 1);
   ;(*current-gdk-window*.set-opacity (/ level 100))
+  ; opacity_atom = *disp*.get_atom('_NET_WM_WINDOW_OPACITY')
+  ; level = 50
+  ; v = int(0xffffffff / 100 * level)
+  ; data = struct.pack('I', v)
+  ; *disp*.change_property(wnck_window_xid, opacity_atom, X.Cardinal, 32, X.PropModeReplace, data)
+  ;(*current-xwindow*.change_property
+  ;  (*disp*.intern_atom "_MOTIF_WM_HINTS")
+  ;  (*disp*.intern_atom "_MOTIF_WM_HINTS")
+  ;  32
+  ;  data)
   (_not-yet-implemented "opacity"))
 
 (defn maximize []
@@ -588,6 +612,44 @@
 (_defsetting "tile-margin-right"  0 (| int str))
 (_defsetting "tile-col-gap"       0 (| int str))
 (_defsetting "tile-row-gap"       0 (| int str))
+
+(defn browser-favicon [[use-full-url False]]
+  (ap-when (browser-url)
+    (_favicon-for-url it :use-full-url use-full-url)))
+
+(defn browser-url []
+  (setv wname (window-name))
+  (case (window-class)
+    "Chromium" (do (setv accessible-name "Chromium")
+                   (setv urlbar-attr "class")
+                   (setv urlbar-attr-val "OmniboxViewViews"))
+    "firefox"  (do (setv accessible-name "Firefox")
+                   (setv urlbar-attr "id")
+                   (setv urlbar-attr-val "urlbar-input"))
+    else       (do (print "(browser-url) called with non browser window or unsupported browser")
+	           (return None)))
+  (setv root (. pyatspi Registry (getDesktop 0)))
+  (setv browser-accessible None)
+  (for [i (range (root.get_child_count))]
+    (setv app-accessible (. root (getChildAtIndex i)))
+    (when (= app-accessible.name accessible-name)
+       (setv browser-accessible app_accessible)
+       (break)))
+  (unless browser-accessible 
+    (print "ERROR: could not find browser accessible. Is the GNOME_ACCESSIBILITY env variable set to 1 ?")
+    (return None))
+  (for [i (range (browser-accessible.get_child_count))]
+    (setv browser-window (. browser-accessible (getChildAtIndex i)))
+    (when (= browser-window.name wname)
+       (setv url-bar
+             (pyatspi.findDescendant browser-window
+                                     (fn [x] (= (. x (get_attributes) [urlbar-attr])
+                                                urlbar-attr-val))
+                                     :breadth_first True))
+       (return (. url-bar
+                  (queryText)
+                  (getText 0 -1)))))
+  (return None))
 
 (defn monitor []
   "Returns the connector name of the current window's monitor (i.e. the one that has most of the window in it)."

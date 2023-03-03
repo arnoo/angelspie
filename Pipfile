@@ -6,8 +6,9 @@ name = "pypi"
 [packages]
 hy = "*"
 hyrule = "*"
-
-[dev-packages]
+#pyatspi = {path="/usr/lib/python3.10/site-packages/pyatspi"}
+#pyatspi = {version="*", system=true}
+favicon = "*"
 
 [requires]
 python_version = "3.10"
