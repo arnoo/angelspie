@@ -208,7 +208,7 @@
 (defn _is-valid-tile-pattern [pattern]
   (bool (re.match "^_*[*]+_*$" pattern)))
 
-(defn _parse-command-line []
+(defn _parse-command-line [args]
   (setv parser (argparse.ArgumentParser :description "Act on windows when created"))
   (parser.add-argument 
                  "--docs"
@@ -979,16 +979,30 @@
       (Gtk.main_quit)
       (Wnck.shutdown)))
   (Gtk.main))
+;TODO: TRY
+;main_loop = GLib.MainLoop()
+;
+;try:
+;    main_loop.run()
+;except KeyboardInterrupt:
+;    print("How rude!")
 
-(setv *command-line-args* (_parse-command-line))
 
-(_print-when-verbose *command-line-args*)
+(defn _main [[args None]]
+  (global *command-line-args*)
+  (setv *command-line-args*
+        (_parse-command-line (or args
+                                 (cut sys.argv 1 -1))))
+  (_print-when-verbose *command-line-args*)
+  
+  (when *command-line-args*.docs
+    (_docs)
+    (sys.exit 0))
+  
+  (_load-scripts)
+  (if *command-line-args*.eval
+    (_process-window (_wnck-get-active-window))
+    (_main-loop)))
 
-(when *command-line-args*.docs
-  (_docs)
-  (sys.exit 0))
-
-(_load-scripts)
-(if *command-line-args*.eval
-  (_process-window (_wnck-get-active-window))
-  (_main-loop))
+(when (= __name__ "__main__")
+  (_main))
