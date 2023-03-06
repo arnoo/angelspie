@@ -14,6 +14,7 @@
 ; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 (import argparse)
+(import binascii [hexlify])
 (import enum [Enum])
 (import favicon)
 (import functools)
@@ -32,7 +33,6 @@
 (import signal)
 (import subprocess)
 (import sys)
-(import threading)
 (import time)
 (import Xlib)
 (import Xlib.display)
@@ -112,9 +112,11 @@
       (int dimension)))
 
 (defn [functools.cache] _favicon-for-url [url [use-full-url False]]
+  (setv headers {"User-Agent" "Angelspie"})
   (for [icon (favicon.get (if use-full-url
-			      url
-			      (. "/" (join (cut (url.split "/" 4) 0 3)))))]
+                              url
+                              (. "/" (join (cut (url.split "/" 4) 0 3))))
+                          :headers headers)]
     (when (and (= (. icon format) "png")
                (>= (. icon width) 32))
       (return (. icon url)))))
@@ -132,17 +134,25 @@
     (setv y (- y (. monitor-geom y))))
   [x y w h])
 
-(defn _get-xmonitor-by-connector-name [connector-name]
-  ;TODO ability to filter by EDID : = XInternAtom (disp, RR_PROPERTY_RANDR_EDID, FALSE);
-  ; so that we can use (monitor-connected "DP1" :edid "XXXXXXXXX")
-  ;     output_info = randr.randr_get_output_info(root, output, Xlib.X.CurrentTime)
-  ; edid_property = [prop for prop in output_info.properties if prop.name == b'EDID'][0]
-  ; edid_data = edid_property.data
+(defn _get-edid [monitor]
+  (str (hexlify (bytearray
+                  (. (*disp*.xrandr_get_output_property (get monitor.crtcs 0)
+                                                        (*disp*.intern_atom "EDID")
+                                                        Xlib.X.AnyPropertyType
+                                                        0
+                                                        100)
+                      _data
+                      ["value"]))) "utf-8"))
+
+(defn _get-xmonitor-by-connector-name [connector-name [EDID None]]
   (for [m (. *disp*
              (screen)
              root
              (xrandr_get_monitors)
              monitors)]
+     (when EDID
+       (unless (= (_get-edid m) EDID)
+         (continue)))
      (when (= (. *disp* (get_atom_name m.name))
               connector-name)
        (return m))))
@@ -662,9 +672,19 @@
      (when (and (= m.x gdk-monitor-geom.x)
                 (= m.y gdk-monitor-geom.y))
        (return (. *disp* (get_atom_name m.name))))))
+
+(defn monitor-edid [[connector-name None]]
+  "Returns the EDID of the current monitor, or, if
+   `connector-name` is supplied, of the corresponding
+   monitor."
+  (_get-edid (_get-xmonitor-by-connector-name (or connector-name (monitor)))))
   
-(defn monitor-connected [connector-name]
-  "Returns True if monitor with connector connector-name is connected, false otherwise"
+(defn monitor-connected [connector-name [EDID None]]
+  "Returns True if monitor with connector connector-name is connected, false otherwise.
+   If EDID is supplied, returns True only if the monitor's EDID matches.
+   To get the connector name for a monitor type `xrand` in your terminal.
+   To get the EDID for a monitor use Angelspie function
+   `(monitor-edid connector-name)`."
   (bool (_get-xmonitor-by-connector-name connector-name)))
 
 (defn monitor-height []
@@ -684,17 +704,22 @@
      (get_geometry)
      width))
 
-(defmacro on-class-change [#*args]
-  "Attaches <callback> to class changes on the current window."
-  `(_attach_to_window_event "class-changed" (fn [] ~args)))
+(defmacro on-class-change [#*forms]
+  "Runs <forms> on class changes of the current window."
+  `(_attach_to_window_event "class-changed" (fn [] ~forms)))
 
-(defmacro on-icon-change [#*args]
-  "Attaches <callback> to icon changes on the current window."
-  `(_attach_to_window_event "icon-changed" (fn [] ~args)))
+(defmacro on-icon-change [#*forms]
+  "Runs <forms> on icon changes of the current window."
+  `(_attach_to_window_event "icon-changed" (fn [] ~forms)))
 
-(defmacro on-name-change [#*args]
-  "Attaches <callback> to name changes on the current window."
-  `(_attach_to_window_event "name-changed" (fn [] ~args)))
+(defmacro on-name-change [#*forms]
+  "Runs <forms> on name changes of the current window."
+  `(_attach_to_window_event "name-changed" (fn [] ~forms)))
+
+(setv _*monitors-callback* (fn []))
+(defmacro on-monitors-change [#*forms]
+  "Runs <forms> on changes in monitor setup."
+  `(setv _*monitors-callback* (fn [] ~forms)))
 
 (defn set-monitor [monitor-ref-or-direction [preserve-tiling False]]
   "Move window to monitor identified by `monitor-ref-or-direction`.
@@ -885,7 +910,6 @@
        (when (= w *current-window*)
          (break))
        (setv index (+ index 1))))
-  (_print-when-verbose "INDEX IN CLASS" index)
   index)
   
 (defn window-index-in-workspace []
@@ -898,7 +922,6 @@
         (when (= win *current-window*)
           (break))
         (setv index (+ index 1)))))
-  (_print-when-verbose "INDEX IN WORKSPACE" index)
   index)
 
 (defn window-type [type]
@@ -918,7 +941,8 @@
 
 (defn _on-monitors-changed [screen]
   (_print-when-verbose "NEW SCREEN CONFIG, RESTARTING ++++++")
-  (list (map _process-window (_wnck-list-windows))))
+  (list (map _process-window (_wnck-list-windows)))
+  (_*monitors-callback*))
 
 (defn _on-new-window [screen window]
   (_print-when-verbose "NEW WINDOW ++++++")
@@ -952,8 +976,8 @@
     GLib.PRIORITY_DEFAULT
     signal.SIGINT
     (fn []
-      (Wnck.shutdown)
-      (Gtk.main_quit)))
+      (Gtk.main_quit)
+      (Wnck.shutdown)))
   (Gtk.main))
 
 (setv *command-line-args* (_parse-command-line))
