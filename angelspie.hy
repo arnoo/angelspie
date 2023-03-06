@@ -972,21 +972,13 @@
   (. (pathlib.Path +last-pattern-shelve+)
      (unlink :missing_ok True))
   (_attach-handler-to-all-screens)
-  (GLib.unix_signal_add
-    GLib.PRIORITY_DEFAULT
-    signal.SIGINT
-    (fn []
-      (Gtk.main_quit)
-      (Wnck.shutdown)))
-  (Gtk.main))
-;TODO: TRY
-;main_loop = GLib.MainLoop()
-;
-;try:
-;    main_loop.run()
-;except KeyboardInterrupt:
-;    print("How rude!")
-
+  (try
+    (. GLib
+       (MainLoop)
+       (run))
+    (except [KeyboardInterrupt]
+      (print "Caught SIGINT, quitting.")
+      (. GLib (MainLoop) (quit)))))
 
 (defn _main [[args None]]
   (global *command-line-args*)
