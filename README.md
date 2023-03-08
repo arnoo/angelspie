@@ -4,9 +4,9 @@ Angelspie is a tool to apply rules to windows on Linux: placement, workspace, ti
 
 Angelspie is intended as a drop-in replacement for Devilspie which is unmaintained and now segfaults way too often.
 
-Compared to Devilspie, Angelspie has some added functionality for tiling. It also repositions windows when display configuration changes (screen added or removed for instance).
+Compared to Devilspie, Angelspie has some added functionality for tiling and multi monitor setups. It also repositions windows when display configuration changes (monitor added or removed for instance).
 
-If you start Angelspie and no configuration files exist, it will build configuration files based on your Devilspie config if you have one. 
+If you start Angelspie and no configuration files exist, configuration files will be built based on your Devilspie config if you have one. 
 
 ## Configuration
 
@@ -28,6 +28,7 @@ Here's an example `.as` script that shows a few possibilities:
 
 (when (in (window_class)
           ["Gitlab-board" "JIRA-board"])
+  (unpin)
   (tile-at "full")
   (when (monitor-connected "DP1")
     (set-monitor "DP1")
@@ -104,7 +105,6 @@ Angelspie combined with "I Hate Tabs - SDI extension" gives you Firefox with til
 
 
 ## API documentation
-
 ### DEVILSPIE FUNCTIONS/MACROS
 #### `(application_name)`
 Return the application name (as determined by libwnck) of the current window (String).
@@ -257,11 +257,28 @@ Return the X11 window id of the current window (Integer).
 Set Angelspie setting <varname> to the result of evaluating val-form
    in each window/monitor/etc. context where the setting is needed.
 
+#### `(browser-favicon [use-full-url False])`
+None
+
+#### `(browser-url)`
+None
+
 #### `(monitor)`
 Returns the connector name of the current window's monitor (i.e. the one that has most of the window in it).
 
-#### `(monitor-connected connector-name)`
-Returns True if monitor with connector connector-name is connected, false otherwise
+#### `(monitor-edid [connector-name None])`
+Returns the EDID of the current monitor, or, if
+   `connector-name` is supplied, of the corresponding
+   monitor.
+   Returns None if no matching monitor is found for
+   connector-name.
+
+#### `(monitor-connected connector-name [EDID None])`
+Returns True if monitor with connector connector-name is connected, false otherwise.
+   If EDID is supplied, returns True only if the monitor's EDID matches.
+   To get the connector name for a monitor type `xrand` in your terminal.
+   To get the EDID for a monitor use Angelspie function
+   `(monitor-edid connector-name)`.
 
 #### `(monitor-height)`
 Returns the height in pixels of the current window's monitor (i.e. the one that has most of the window in it).
@@ -272,14 +289,17 @@ Returns `True` if the current window's monitor (i.e. the one that has most of th
 #### `(monitor-width)`
 Returns the width in pixels of the current window's monitor (i.e. the one that has most of the window in it).
 
-#### `(on-class-change #*args)`
-Attaches <callback> to class changes on the current window.
+#### `(on-class-change #*forms)`
+Runs <forms> on class changes of the current window.
 
-#### `(on-icon-change #*args)`
-Attaches <callback> to icon changes on the current window.
+#### `(on-icon-change #*forms)`
+Runs <forms> on icon changes of the current window.
 
-#### `(on-name-change #*args)`
-Attaches <callback> to name changes on the current window.
+#### `(on-name-change #*forms)`
+Runs <forms> on name changes of the current window.
+
+#### `(on-monitors-change #*forms)`
+Runs <forms> on changes in monitor setup.
 
 #### `(set-monitor monitor-ref-or-direction [preserve-tiling False])`
 Move window to monitor identified by `monitor-ref-or-direction`.
@@ -310,9 +330,9 @@ Tile the current window. `position` can be one of :
      - "top"           which is equivalent to `(tile "_*"   "*"  )`
      - "top-left"      which is equivalent to `(tile "_*"   "*_" )`
      - "top-right"     which is equivalent to `(tile "_*"   "_*" )`
-     - "center"        which is equivalent to `(tile "_*_*" "__*")`
-     - "center-left"   which is equivalent to `(tile "_*_*" "*_" )`
-     - "center-right"  which is equivalent to `(tile "_*_*" "_*" )`
+     - "center"        which is equivalent to `(tile "_**_" "_**_")`
+     - "center-left"   which is equivalent to `(tile "_**_" "*_" )`
+     - "center-right"  which is equivalent to `(tile "_**_" "_*" )`
      - "bottom"        which is equivalent to `(tile "_*"   "*"  )`
      - "bottom-left"   which is equivalent to `(tile "_*"   "*_" )`
      - "bottom-right"  which is equivalent to `(tile "_*"   "_*" )`

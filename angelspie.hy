@@ -14,9 +14,7 @@
 ; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 (import argparse)
-(import binascii [hexlify])
 (import enum [Enum])
-(import favicon)
 (import functools)
 (import glob)
 (import math)
@@ -27,11 +25,9 @@
 (pgi.require_version "Gtk" "3.0")
 (pgi.require_version "Wnck" "3.0")
 (import pgi.repository [GdkX11 GLib Gtk Wnck])
-(import pyatspi)
 (import re)
 (import shelve)
 (import signal)
-(import subprocess)
 (import sys)
 (import time)
 (import Xlib)
@@ -62,25 +58,18 @@
          (print "GDK ERROR" it)
          (return False))))
 
-(setv _*window-callbacks*
-      {
-        "class-changed" {} 
-        "name-changed" {}
-        "icon-changed" {}
-      })
-
-(defn _attach_to_window_event [event-name callback]
-  (unless (and (in (window_xid)
-                   (get _*window-callbacks* event-name))
-               (in callback
-                   (get _*window-callbacks* event-name)))
-    (*current-window*.connect event-name
-                              (fn [win] (_with-window win (callback))))
-    (assoc _*window-callbacks* event-name
-           (if (in (window_xid)
-                   (get _*window-callbacks* event-name))
-                (+ (get _*window-callbacks* event-name) [callback])
-                [callback]))))
+(defn _attach-to-window-event [event-name callback]
+  (setv attr-name (+ "_angelspie-" event-name "callbacks"))
+  (unless (hasattr *current-window* attr-name)
+    (setattr *current-window* attr-name (set))
+    (*current-window*.connect
+      event-name
+      (fn [win]
+        (_with-window win
+          (for [callback (getattr *current-window* attr-name)]
+            (callback))))))
+  (. (getattr *current-window* attr-name)
+     (add callback)))
   
 (defn _docs []
   "Returns the API docs as Markdown"
@@ -88,7 +77,9 @@
     (for [line (source-handle.readlines)]
       (when (or (line.startswith "(defn")
                 (line.startswith "(defmacro"))
-        (setv [_ func-name func-args] (line.split " " 2))
+        (if (line.startswith "(defn [")
+          (setv [_ _ func-name func-args] (line.split " " 3))
+          (setv [_ func-name func-args] (line.split " " 2)))
         (unless (func-name.startswith "_")
           (setv func-args
             (if (= func-args "[]")
@@ -112,6 +103,7 @@
       (int dimension)))
 
 (defn [functools.cache] _favicon-for-url [url [use-full-url False]]
+  (import favicon)
   (setv headers {"User-Agent" "Angelspie"})
   (for [icon (favicon.get (if use-full-url
                               url
@@ -135,6 +127,7 @@
   [x y w h])
 
 (defn _get-edid [monitor]
+  (import binascii [hexlify])
   (str (hexlify (bytearray
                   (. (*disp*.xrandr_get_output_property (get monitor.crtcs 0)
                                                         (*disp*.intern_atom "EDID")
@@ -183,6 +176,15 @@
     ;  when point is outside any monitor
     (return None))
   target-monitor)
+
+(defn _get-prospective-prop [obj prop [default None] [prospective True] [timeout-secs 2]]
+  (when (and prospective
+             (hasattr obj (+ "_angelspie_pending_" prop "_since")))
+      (when (<= (time.time)
+                (+ (getattr obj (+ "_angelspie_pending_" prop "_since"))
+                   timeout-secs))
+        (return (getattr obj (+ "_angelspie_pending_" prop)))))
+  default)
 
 (defn _hdimension-to-pixels [dimension]
   (_dimension-to-pixels dimension
@@ -235,12 +237,16 @@
                  :nargs "*")
   (parser.parse-args))
 
+(defn _not-yet-implemented [fn-name]
+  (print f"WARNING: Call to function '{fn-name}' which is not yet implemented."))
+
 (defn _print-when-verbose [#*args]
   (when *command-line-args*.verbose
      (print #*args)))
 
-(defn _not-yet-implemented [fn-name]
-  (print f"WARNING: Call to function '{fn-name}' which is not yet implemented."))
+(defn _set-prospective-prop [obj prop value]
+  (setattr obj (+ "_angelspie_pending_" prop) value)
+  (setattr obj (+ "_angelspie_pending_" prop "_since") (time.time)))
 
 (defn _tile-inc-pattern [pattern increment]
   (if (> increment 0)
@@ -270,7 +276,7 @@
 
 (defn _window-prospective-workspace [wnck-window]
   "Returns the workspace a window is in or is expected to be in soon due to a call to set_workspace."
-  (ap-when (hasattr wnck-window "_angelspie-pending-workspace-since")
+  (ap-when (hasattr wnck-window "_angelspie_pending_workspace_since")
     (when (<= (+ it 2) (time.time))
       (return wnck-window._angelspie-pending-workspace)))
   (wnck-window.get_workspace))
@@ -282,8 +288,8 @@
              Xlib.X.AnyPropertyType)
     (. it.value [0])))
 
-(defn _wnck-get-active-window []
-  (for [window (_wnck-list-windows)]
+(defn _wnck-get-active-window [[force-update False]]
+  (for [window (_wnck-list-windows :force-update force-update)]
     (when (window.is_active)
       (return window))))
 
@@ -294,10 +300,11 @@
        (.append screens it)))
   screens)
 
-(defn _wnck-list-windows []
+(defn _wnck-list-windows [[force-update False]]
   (setv windows [])
   (for [screen (_wnck-list-screens)]
-    (screen.force-update)
+    (when force-update
+      (screen.force-update))
     (setv windows (+ windows (screen.get_windows))))
   windows)
 
@@ -480,9 +487,10 @@
                             (get_screen)
                             (get_workspaces)
                             [(- workspace-nb 1)]))
-  (setv *current-window*._angelspie-pending-workspace target-workspace)
-  (setv *current-window*._angelspie-pending-workspace-since (time.time))
-  (*current-window*.move_to_workspace target-workspace))
+  (*current-window*.move_to_workspace target-workspace)
+  (_set-prospective-prop *current-window*
+                         "workspace"
+                         workspace-nb))
 
 (defn shade []
   "Shade ('roll up') the current window, returns True."
@@ -503,12 +511,14 @@
 
 (defn spawn_async [#*cmd]
   "Execute a command in the background, returns boolean. Command is given as a single string, or as a series of strings (similar to execl)."
+  (import subprocess)
   (setv string-cmd (.join " " (map str cmd)))
   (_print-when-verbose "spawn_async" string-cmd)
   (subprocess.Popen ["bash" "-c" string-cmd]))
 
 (defn spawn_sync [#*cmd]
   "Execute  a  command in the foreground (returns command output as string, or `False` on error). Command is given as a single string, or as a series of strings (similar to execl)."
+  (import subprocess)
   (setv string-cmd (.join " " (map str cmd)))
   (_print-when-verbose "spawn" string-cmd)
   (.decode (. (subprocess.run ["bash" "-c" string-cmd] :stdout subprocess.PIPE)
@@ -558,9 +568,14 @@
   "Set the window type of the current window, returns boolean. Accepted values are: normal, dialog, menu, toolbar, splashscreen, utility, dock, desktop."
   (*current-window*.set_window_type (getattr Wnck.WindowType type)))
 
-(defn window_class []
-  "Return the class of the current window (String)."
-  (*current-window*.get_class_group_name))
+(defn window_class [[prospective True]]
+  "Return the class of the current window (String).
+   If `prospective=True`, will return the class the window
+   is expected to have soon due to a possible call to set-window-class."
+  (_get-prospective-prop *current-window*
+                         "class"
+                         (*current-window*.get_class_group_name)
+                         :prospective prospective))
 
 (defn window_name []
   "Return the title of the current window (String)."
@@ -575,12 +590,18 @@
   "Return the role (as determined by the WM_WINDOW_ROLE hint) of the current window (String)."
   (*current-window*.get_role))
 
-(defn window_workspace []
-  "Returns the workspace the current window is on (Integer)."
-  (+ (. *current-window*
-        (get_workspace)
-        (get_number))
-     1))
+(defn window_workspace [[prospective True]]
+  "Returns the workspace the current window is on (Integer).
+   If `prospective=True` will return the workspace the window
+   is on or is expected to be on soon due to a pending
+   set-window-workspace call."
+  (_get-prospective-prop *current-window*
+                         "workspace"
+                         (+ (. *current-window*
+                               (get_workspace)
+                               (get_number))
+                            1)
+                         :prospective prospective))
 
 (defn window_xid []
   "Return the X11 window id of the current window (Integer)."
@@ -627,9 +648,17 @@
   (ap-when (browser-url)
     (_favicon-for-url it :use-full-url use-full-url)))
 
+(defn _get-accessible-child-by-attr-value [accessible attr value]
+  (import pyatspi)
+  (pyatspi.findDescendant accessible
+                          (fn [x] (= (. x (get_attributes) [attr])
+                                      value))
+                          :breadth_first True))
+
 (defn browser-url []
+  (import pyatspi)
   (setv wname (window-name))
-  (case (window-class)
+  (case (window_class)
     "Chromium" (do (setv accessible-name "Chromium")
                    (setv urlbar-attr "class")
                    (setv urlbar-attr-val "OmniboxViewViews"))
@@ -639,26 +668,32 @@
     else       (do (print "(browser-url) called with non browser window or unsupported browser")
 	           (return None)))
   (setv root (. pyatspi Registry (getDesktop 0)))
-  (setv browser-accessible None)
+  (setv browser-accessibles [])
   (for [i (range (root.get_child_count))]
     (setv app-accessible (. root (getChildAtIndex i)))
     (when (= app-accessible.name accessible-name)
-       (setv browser-accessible app_accessible)
-       (break)))
-  (unless browser-accessible 
+       (browser-accessibles.append app_accessible)))
+  (unless (> (len browser-accessibles) 0)
     (print "ERROR: could not find browser accessible. Is the GNOME_ACCESSIBILITY env variable set to 1 ?")
     (return None))
-  (for [i (range (browser-accessible.get_child_count))]
-    (setv browser-window (. browser-accessible (getChildAtIndex i)))
-    (when (= browser-window.name wname)
-       (setv url-bar
-             (pyatspi.findDescendant browser-window
-                                     (fn [x] (= (. x (get_attributes) [urlbar-attr])
-                                                urlbar-attr-val))
-                                     :breadth_first True))
-       (return (. url-bar
-                  (queryText)
-                  (getText 0 -1)))))
+  (for [browser-accessible browser-accessibles]
+    (for [i (range (browser-accessible.get_child_count))]
+      (setv browser-window (. browser-accessible (getChildAtIndex i)))
+      (when (browser-window.name.startswith wname)
+        (setv url-bar (_get-accessible-child-by-attr-value browser-window
+                                                           urlbar-attr
+                                                           urlbar-attr-val))
+        (setv url (. url-bar
+                    (queryText)
+                    (getText 0 -1)))
+        (when (= (window_class) "Chromium")
+          (setv location-icon-text
+                (. (_get-accessible-child-by-attr-value browser-window
+                                                        "class"
+                                                        "LocationIconView")
+                   (get_description)))
+          (setv url (+ (if (= location-icon-text "Not secure") "http" "https") "://" url)))
+        (return url))))
   (return None))
 
 (defn monitor []
@@ -676,8 +711,11 @@
 (defn monitor-edid [[connector-name None]]
   "Returns the EDID of the current monitor, or, if
    `connector-name` is supplied, of the corresponding
-   monitor."
-  (_get-edid (_get-xmonitor-by-connector-name (or connector-name (monitor)))))
+   monitor.
+   Returns None if no matching monitor is found for
+   connector-name."
+  (ap-when (_get-xmonitor-by-connector-name (or connector-name (monitor)))
+    (_get-edid it)))
   
 (defn monitor-connected [connector-name [EDID None]]
   "Returns True if monitor with connector connector-name is connected, false otherwise.
@@ -706,20 +744,20 @@
 
 (defmacro on-class-change [#*forms]
   "Runs <forms> on class changes of the current window."
-  `(_attach_to_window_event "class-changed" (fn [] ~forms)))
+  `(_attach-to-window-event "class-changed" (fn [] ~forms)))
 
 (defmacro on-icon-change [#*forms]
   "Runs <forms> on icon changes of the current window."
-  `(_attach_to_window_event "icon-changed" (fn [] ~forms)))
+  `(_attach-to-window-event "icon-changed" (fn [] ~forms)))
 
 (defmacro on-name-change [#*forms]
   "Runs <forms> on name changes of the current window."
-  `(_attach_to_window_event "name-changed" (fn [] ~forms)))
+  `(_attach-to-window-event "name-changed" (fn [] ~forms)))
 
-(setv _*monitors-callback* (fn []))
+(setv _*monitors-callbacks* (set))
 (defmacro on-monitors-change [#*forms]
   "Runs <forms> on changes in monitor setup."
-  `(setv _*monitors-callback* (fn [] ~forms)))
+  `(_*monitors-callbacks*.add (fn [] ~forms)))
 
 (defn set-monitor [monitor-ref-or-direction [preserve-tiling False]]
   "Move window to monitor identified by `monitor-ref-or-direction`.
@@ -821,9 +859,9 @@
      - \"top\"           which is equivalent to `(tile \"_*\"   \"*\"  )`
      - \"top-left\"      which is equivalent to `(tile \"_*\"   \"*_\" )`
      - \"top-right\"     which is equivalent to `(tile \"_*\"   \"_*\" )`
-     - \"center\"        which is equivalent to `(tile \"_*_*\" \"__*\")`
-     - \"center-left\"   which is equivalent to `(tile \"_*_*\" \"*_\" )`
-     - \"center-right\"  which is equivalent to `(tile \"_*_*\" \"_*\" )`
+     - \"center\"        which is equivalent to `(tile \"_**_\" \"_**_\")`
+     - \"center-left\"   which is equivalent to `(tile \"_**_\" \"*_\" )`
+     - \"center-right\"  which is equivalent to `(tile \"_**_\" \"_*\" )`
      - \"bottom\"        which is equivalent to `(tile \"_*\"   \"*\"  )`
      - \"bottom-left\"   which is equivalent to `(tile \"_*\"   \"*_\" )`
      - \"bottom-right\"  which is equivalent to `(tile \"_*\"   \"_*\" )`
@@ -840,9 +878,9 @@
     "top"          (return (tile "*_"   "*"  ))
     "top-left"     (return (tile "*_"   "*_" ))
     "top-right"    (return (tile "*_"   "_*" ))
-    "center"       (return (tile "__*"  "__*"))
-    "center-left"  (return (tile "_*_*" "*_" ))
-    "center-right" (return (tile "_*_*" "_*" ))
+    "center"       (return (tile "_**_"  "_**_"))
+    "center-left"  (return (tile "_**_" "*_" ))
+    "center-right" (return (tile "_**_" "_*" ))
     "bottom"       (return (tile "_*"   "*"  ))
     "down"         (return (tile "_*"   "*"  ))
     "bottom-left"  (return (tile "_*"   "*_" ))
@@ -880,6 +918,12 @@
     (set-monitor direction))
   (tile new-v-pattern new-h-pattern))
 
+(defn set-window-class [class]
+  (_set-prospective-prop *current-window*
+                         "class"
+                         class)
+  (*current-xwindow*.set_wm_class class class))
+
 (defn screen-height []
   "Returns the height in pixels of the current window's screen."
   (. *current-window*
@@ -915,9 +959,12 @@
 (defn window-index-in-workspace []
   "Returns the index of the window in the taskbar, counting only the windows of the same workspace."
   (setv index 0)
-  (setv workspace (_window-prospective-workspace *current-window*))
+  (setv workspace (window_workspace))
   (for [win (sorted (_wnck-list-windows) :key (fn [ww] (str (ww.get_sort_order))))]
-    (ap-when (_window-prospective-workspace win)
+    (ap-when (_get-prospective-prop
+               win
+               "workspace"
+               (ap-when (. win (get_workspace)) (+ (. it (get_number)) 1)))
       (when (= it workspace)
         (when (= win *current-window*)
           (break))
@@ -942,7 +989,8 @@
 (defn _on-monitors-changed [screen]
   (_print-when-verbose "NEW SCREEN CONFIG, RESTARTING ++++++")
   (list (map _process-window (_wnck-list-windows)))
-  (_*monitors-callback*))
+  (for [callback _*monitors-callbacks*]
+       (callback)))
 
 (defn _on-new-window [screen window]
   (_print-when-verbose "NEW WINDOW ++++++")
@@ -972,13 +1020,13 @@
   (. (pathlib.Path +last-pattern-shelve+)
      (unlink :missing_ok True))
   (_attach-handler-to-all-screens)
-  (try
-    (. GLib
-       (MainLoop)
-       (run))
-    (except [KeyboardInterrupt]
-      (print "Caught SIGINT, quitting.")
-      (. GLib (MainLoop) (quit)))))
+  (GLib.unix_signal_add
+    GLib.PRIORITY_HIGH
+    signal.SIGINT
+    (fn []
+      (Gtk.main_quit)
+      (Wnck.shutdown)))
+  (Gtk.main))
 
 (defn _main [[args None]]
   (global *command-line-args*)
@@ -993,7 +1041,7 @@
   
   (_load-scripts)
   (if *command-line-args*.eval
-    (_process-window (_wnck-get-active-window))
+    (_process-window (_wnck-get-active-window :force-update True))
     (_main-loop)))
 
 (when (= __name__ "__main__")
