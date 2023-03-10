@@ -72,7 +72,7 @@ You can specify `.as` scripts or even code for Angelspie to evaluate.
 Code passed to `--eval` is evaluated in the context of the active window.
 
 For example, I have this bound to Super+Right in my desktop environment:
-`pipenv run hy angelspie.hy --load=${HOME}/.config/angelspie/00-screen-conf.as --eval='(tile-at "right")'`
+`angelspie --load=${HOME}/.config/angelspie/00-screen-conf.as --eval='(tile-at "right")'`
 which will tile the active window right.
 
 `00-screen-conf.as` contains:
@@ -102,6 +102,19 @@ Add this at the very beginning of your ~/.emacs/init.el to prevent Emacs from re
 ### Firefox
 
 Angelspie combined with "I Hate Tabs - SDI extension" gives you Firefox with tiling windows instead of tabs.
+
+
+### XFCE
+
+
+This forces the XFCE workspace switcher to re-adjust to the new display geometry when unplugging a monitor.
+
+```hy
+(on-monitors-change
+  (spawn-async "xfconf-query -c xfce4-panel -p /plugins/plugin-2/miniature-view -s false;
+                xfconf-query -c xfce4-panel -p /plugins/plugin-2/miniature-view -s true"))
+```
+
 
 
 ## API documentation

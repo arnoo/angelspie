@@ -111,6 +111,8 @@
                           :headers headers)]
     (when (and (= (. icon format) "png")
                (>= (. icon width) 32))
+      (return (. icon url)))
+    (when (= (. icon format) "ico")
       (return (. icon url)))))
 
 (defn _geoms-intersect [geom1 geom2]
@@ -120,6 +122,13 @@
            (< (+ x1 w1) x2)
            (> y1 (+ y2 h2))
            (< (+ y1 h1) y2))))
+
+(defn _get-accessible-child-by-attr-value [accessible attr value]
+  (import pyatspi)
+  (pyatspi.findDescendant accessible
+                          (fn [x] (= (. x (get_attributes) [attr])
+                                     value))
+                          :breadth_first True))
 
 (defn _get-geometry [win]
   "Return the window's geometry in the
@@ -264,10 +273,10 @@
   (if (> increment 0)
     (if (pattern.endswith "*")
         pattern
-        (+ "_" (cut pattern 1 -1)))
+        (+ "_" (cut pattern 0 -1)))
     (if (pattern.startswith "*")
         pattern
-        (+ (cut pattern 0 -2) "_"))))
+        (+ (cut pattern 1 None) "_"))))
 
 (defn _try-to-build-config-from-devilspie-if-we-have-none []
   (unless (glob.glob (os.path.join +config-dir+ "*.as"))
@@ -668,13 +677,6 @@
   (ap-when (browser-url)
     (_favicon-for-url it :use-full-url use-full-url)))
 
-(defn _get-accessible-child-by-attr-value [accessible attr value]
-  (import pyatspi)
-  (pyatspi.findDescendant accessible
-                          (fn [x] (= (. x (get_attributes) [attr])
-                                     value))
-                          :breadth_first True))
-
 (defn browser-url []
   (import pyatspi)
   (setv wname (window-name))
@@ -890,9 +892,11 @@
                             (* row-height-px y)
                             (* row-gap-px y))))
   (setv w (. h-pattern (count "*")))
-  (setv w-px (math.floor (* col-width-px w)))
+  (setv w-px (math.floor (+ (* col-width-px w)
+                            (* col-gap-px (- w 1)))))
   (setv h (. v-pattern (count "*")))
-  (setv h-px (math.floor (* row-height-px h)))
+  (setv h-px (math.floor (+ (* row-height-px h)
+                            (* col-gap-px (- h 1)))))
   (ap-with (shelve.open +last-pattern-shelve+)
     (assoc it (str (window_xid)) [v-pattern h-pattern]))
   (_print-when-verbose f"TILE {w-px}x{h-px}+{x-px}+{y-px}")
