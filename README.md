@@ -234,8 +234,10 @@ Unstick the window from viewports, returns True.
 #### `(wintype type)`
 Set the window type of the current window, returns boolean. Accepted values are: normal, dialog, menu, toolbar, splashscreen, utility, dock, desktop.
 
-#### `(window_class)`
+#### `(window_class [prospective True])`
 Return the class of the current window (String).
+   If `prospective=True`, will return the class the window
+   is expected to have soon due to a possible call to set-window-class.
 
 #### `(window_name)`
 Return the title of the current window (String).
@@ -246,8 +248,11 @@ Returns the given property of the window, e.g. pass '_NET_WM_STATE' (String).
 #### `(window_role)`
 Return the role (as determined by the WM_WINDOW_ROLE hint) of the current window (String).
 
-#### `(window_workspace)`
+#### `(window_workspace [window None] [prospective True])`
 Returns the workspace the current window is on (Integer).
+   If `prospective=True` will return the workspace the window
+   is on or is expected to be on soon due to a pending
+   set-window-workspace call.
 
 #### `(window_xid)`
 Return the X11 window id of the current window (Integer).
@@ -263,8 +268,16 @@ None
 #### `(browser-url)`
 None
 
+#### `(empty geom-str [workspace-nb None])`
+Returns True if rectangle corresponding to geom-str is empty,
+   i.e. no windows intersect the rectangle, on the workspace
+   of the current window or on workspace number <workspace-nb>
+   if specified. Returns False if there is an intersecting window.
+   The current window is ignored, as are minimized windows.
+
 #### `(monitor)`
-Returns the connector name of the current window's monitor (i.e. the one that has most of the window in it).
+Returns the connector name of the current window's monitor
+   i.e. the one that has most of the window in it.
 
 #### `(monitor-edid [connector-name None])`
 Returns the EDID of the current monitor, or, if
@@ -274,20 +287,24 @@ Returns the EDID of the current monitor, or, if
    connector-name.
 
 #### `(monitor-connected connector-name [EDID None])`
-Returns True if monitor with connector connector-name is connected, false otherwise.
+Returns True if monitor with connector connector-name is connected, False otherwise.
    If EDID is supplied, returns True only if the monitor's EDID matches.
    To get the connector name for a monitor type `xrand` in your terminal.
    To get the EDID for a monitor use Angelspie function
    `(monitor-edid connector-name)`.
 
 #### `(monitor-height)`
-Returns the height in pixels of the current window's monitor (i.e. the one that has most of the window in it).
+Returns the height in pixels of the current window's
+   monitor, i.e. the one that has most of the window in it.
 
 #### `(monitor-is-primary)`
-Returns `True` if the current window's monitor (i.e. the one that has most of the window in it) is primary, `False` otherwise.
+Returns `True` if the current window's monitor,
+   i.e. the one that has most of the window in it,
+   is primary, `False` otherwise.
 
 #### `(monitor-width)`
-Returns the width in pixels of the current window's monitor (i.e. the one that has most of the window in it).
+Returns the width in pixels of the current window's
+   monitor, i.e. the one that has most of the window in it.
 
 #### `(on-class-change #*forms)`
 Runs <forms> on class changes of the current window.
@@ -305,9 +322,9 @@ Runs <forms> on changes in monitor setup.
 Move window to monitor identified by `monitor-ref-or-direction`.
   `monitor-ref-or-direction` can be one of "left", "right",
   "up" or "down" relative to the current window's monitor
-  (i.e. the one that has most of the window in it) or it can be
-  the monitor's connector name as defined by Xrandr (ex: "DP1",
-  "HDMI1", etc.
+  (i.e. the one that has most of the window in it), "primary" for
+  the primary monitor or it can be the monitor's connector name as
+  defined by Xrandr (ex: "DP1", "HDMI1", etc.
   If preserve-tiling is true, the tiling pattern last set
   for this window will be reapplied after moving it to the
   new monitor.
@@ -342,6 +359,9 @@ Tile the current window. `position` can be one of :
 #### `(tile-move direction)`
 Move the current window in <direction> within
    its current tiling pattern.
+
+#### `(set-window-class class)`
+None
 
 #### `(screen-height)`
 Returns the height in pixels of the current window's screen.

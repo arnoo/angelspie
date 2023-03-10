@@ -50,7 +50,8 @@
        (setv *current-xwindow* (*disp*.create_resource_object "window" (. ~window (get_xid))))
        (setv *current-gdk-window* (GdkX11.X11Window.foreign_new_for_display *gdk-disp* (. ~window (get_xid))))
        (*gdk-disp*.error_trap_push)
-       (try ~forms
+       (try
+            ~@forms
             (except [e [Xlib.error.BadDrawable Xlib.error.BadWindow]]
                (_print-when-verbose "Window closed during script execution")
                (return False)))
@@ -65,9 +66,8 @@
     (*current-window*.connect
       event-name
       (fn [win]
-        (_with-window win
-          (for [callback (getattr *current-window* attr-name)]
-            (callback))))))
+         (_with-window win
+          (lfor c (getattr *current-window* attr-name) (c))))))
   (. (getattr *current-window* attr-name)
      (add callback)))
   
@@ -113,10 +113,18 @@
                (>= (. icon width) 32))
       (return (. icon url)))))
 
-(defn _get-geometry []
-  "Return the current window's geometry in the
+(defn _geoms-intersect [geom1 geom2]
+  (setv [x1 y1 w1 h1] geom1)
+  (setv [x2 y2 w2 h2] geom2)
+  (not (or (> x1 (+ x2 w2))
+           (< (+ x1 w1) x2)
+           (> y1 (+ y2 h2))
+           (< (+ y1 h1) y2))))
+
+(defn _get-geometry [win]
+  "Return the window's geometry in the
    context of the ref_frame set in settings."
-  (setv [x y w h] (*current-window*.get-geometry))
+  (setv [x y w h] (win.get-geometry))
   (when (= (_getsetting "ref-frame")
            RefFrame.MONITOR)
     (setv monitor-geom
@@ -165,6 +173,10 @@
             (- (. current-geom y) 1)]
       "down" [(+ (. current-geom x) 1)
               (+ (. current-geom y) (. current-geom height) 1)]
+      "primary" (for [monitor-index (range (*gdk-disp*.get_n_monitors))]
+                   (when (. (*gdk-disp*.get_monitor monitor-index)
+                            (is_primary))
+                     (return (*gdk-disp*.get_monitor monitor-index))))
       else  (ap-if (_get-xmonitor-by-connector-name monitor-ref-or-direction)
                 [(+ (. it ["x"]) 1) (+ (. it ["y"]) 1)]
                 (do (print f"Invalid monitor ref or direction: '{monitor-ref-or-direction}'")
@@ -203,7 +215,7 @@
    as wnck move/resize seems to often apply only internally but not onscreen."
   `(for [_ (range 1)]
      (do
-       ~forms
+       ~@forms
        ;Calling get_geometry after resize/move seems necessary for some reason
        (*current-gdk-window*.get_geometry))))
 
@@ -321,7 +333,7 @@
 
 (defmacro begin [#*forms]
   "The devilspie equivalent of Hy's `do` : evaluates all the function calls within, returns the result of the last evaluation."
-  `(do ~forms))
+  `(do ~@forms))
 
 (defn below []
   "Set the current window to be below all normal windows, returns True."
@@ -348,7 +360,7 @@
 
 (defn debug []
   "Debugging function, outputs the current window's title, name, role and geometry (Returns TRUE)."
-  (setv [x y w h] (_get-geometry))
+  (setv [x y w h] (_get-geometry *current-window*))
   (print f"Window Title: '{(window_name)}'; Application Name: '{(application_name)}'; Class: '{(window_class)}'; Geometry: {w}x{h}+{x}+{y}")
   True)
 
@@ -384,6 +396,29 @@
   (*current-window*.set_fullscreen True)
   True)
 
+(defn _parse-geom-str [geom-str]
+  (setv dim_re "\\d+\\%{0,1}")
+  (setv size_re "[+-]\\d+\\%{0,1}")
+  (setv geom-parts
+        (re.match (+ "(=|)"
+                    "((?P<w>" dim_re ")x(?P<h>" dim_re ")|)"
+                    "((?P<x>" size_re ")(?P<y>" size_re ")|)"
+                    "$")
+                  (.lower geom-str)))
+  (unless geom-parts
+    (print f"Invalid geometry: {geom-str}")
+    (throw (ValueError)))
+  (setv w (ap-when (.group geom-parts "w") (_hdimension_to-pixels it)))
+  (setv h (ap-when (.group geom-parts "h") (_vdimension_to-pixels it)))
+  (setv x (ap-when (.group geom-parts "x") (_hdimension_to-pixels it)))
+  (setv y (ap-when (.group geom-parts "y") (_vdimension_to-pixels it)))
+  (when (and (= (type x) int)
+             (= (_getsetting "ref-frame") RefFrame.MONITOR))
+    (setv monitor-geometry (. (_get-monitor) (get_geometry)))
+    (setv x (+ (. monitor-geometry x) (or x 0)))
+    (setv y (+ (. monitor-geometry y) (or y 0))))
+  [x y w h])
+
 (defn geometry [geom-str]
   "Set position + size (as string) of current window, returns boolean.
    geom-str should be in X-GeometryString format:
@@ -396,26 +431,10 @@
        `(geometry \"640×480\")`
        `(geometry \"100%×50%+0+0\")`
        `(geometry \"+10%+10%\")`"
-  (setv dim_re "\\d+\\%{0,1}")
-  (setv size_re "[+-]\\d+\\%{0,1}")
-  (setv geom-parts
-        (re.match (+ "(=|)"
-                    "((?P<w>" dim_re ")x(?P<h>" dim_re ")|)"
-                    "((?P<x>" size_re ")(?P<y>" size_re ")|)"
-                    "$")
-                  (.lower geom-str)))
-  (unless geom-parts
-    (print f"Invalid geometry: {geom-str}")
-    (return False))
-  (setv w (ap-when (.group geom-parts "w") (_hdimension_to-pixels it)))
-  (setv h (ap-when (.group geom-parts "h") (_vdimension_to-pixels it)))
-  (setv x (ap-when (.group geom-parts "x") (_hdimension_to-pixels it)))
-  (setv y (ap-when (.group geom-parts "y") (_vdimension_to-pixels it)))
-  (when (and (= (type x) int)
-             (= (_getsetting "ref-frame") RefFrame.MONITOR))
-    (setv monitor-geometry (. (_get-monitor) (get_geometry)))
-    (setv x (+ (. monitor-geometry x) (or x 0)))
-    (setv y (+ (. monitor-geometry y) (or y 0))))
+  (try
+    (setv [x y w h] (_parse-geom-str geom-str))
+    (except [ValueError]
+      (return False)))
   (_insist-on-geometry
     (when (= (type w) int)
       (*current-gdk-window*.resize w h))
@@ -590,17 +609,18 @@
   "Return the role (as determined by the WM_WINDOW_ROLE hint) of the current window (String)."
   (*current-window*.get_role))
 
-(defn window_workspace [[prospective True]]
+(defn window_workspace [[window None] [prospective True]]
   "Returns the workspace the current window is on (Integer).
    If `prospective=True` will return the workspace the window
    is on or is expected to be on soon due to a pending
    set-window-workspace call."
-  (_get-prospective-prop *current-window*
+  (unless window
+    (setv window *current-window*))
+  (_get-prospective-prop window
                          "workspace"
-                         (+ (. *current-window*
-                               (get_workspace)
-                               (get_number))
-                            1)
+                         (ap-when (. window (get_workspace))
+                          (+ (. it (get_number))
+                             1))
                          :prospective prospective))
 
 (defn window_xid []
@@ -652,7 +672,7 @@
   (import pyatspi)
   (pyatspi.findDescendant accessible
                           (fn [x] (= (. x (get_attributes) [attr])
-                                      value))
+                                     value))
                           :breadth_first True))
 
 (defn browser-url []
@@ -681,12 +701,14 @@
       (setv browser-window (. browser-accessible (getChildAtIndex i)))
       (when (browser-window.name.startswith wname)
         (setv url-bar (_get-accessible-child-by-attr-value browser-window
-                                                           urlbar-attr
-                                                           urlbar-attr-val))
+                                                          urlbar-attr
+                                                          urlbar-attr-val))
         (setv url (. url-bar
                     (queryText)
                     (getText 0 -1)))
         (when (= (window_class) "Chromium")
+          (when (= url "Address and search bar")
+            (return None))
           (setv location-icon-text
                 (. (_get-accessible-child-by-attr-value browser-window
                                                         "class"
@@ -696,8 +718,34 @@
         (return url))))
   (return None))
 
+(defn empty [geom-str [workspace-nb None]]
+  "Returns True if rectangle corresponding to geom-str is empty,
+   i.e. no windows intersect the rectangle, on the workspace
+   of the current window or on workspace number <workspace-nb>
+   if specified. Returns False if there is an intersecting window.
+   The current window is ignored, as are minimized windows."
+  (try
+    (setv target-geom (_parse-geom-str geom-str))
+    (except [ValueError]
+      (return False)))
+  (unless workspace-nb
+    (setv workspace-nb (window_workspace)))
+  (for [window (_wnck-list-windows)]
+    (setv wworkspace (window-workspace window))
+    (unless (and wworkspace 
+                (= wworkspace workspace-nb))
+      (continue))
+    (when (or (= window *current-window*)
+              (window.is-minimized))
+      (continue))
+    (setv window-geom (_get-geometry window))
+    (when (_geoms-intersect window-geom target-geom)
+      (return False)))
+  (return True))
+
 (defn monitor []
-  "Returns the connector name of the current window's monitor (i.e. the one that has most of the window in it)."
+  "Returns the connector name of the current window's monitor
+   i.e. the one that has most of the window in it."
   (setv gdk-monitor-geom (. (_get-monitor) (get_geometry)))
   (for [m (. *disp*
              (screen)
@@ -718,7 +766,7 @@
     (_get-edid it)))
   
 (defn monitor-connected [connector-name [EDID None]]
-  "Returns True if monitor with connector connector-name is connected, false otherwise.
+  "Returns True if monitor with connector connector-name is connected, False otherwise.
    If EDID is supplied, returns True only if the monitor's EDID matches.
    To get the connector name for a monitor type `xrand` in your terminal.
    To get the EDID for a monitor use Angelspie function
@@ -726,33 +774,37 @@
   (bool (_get-xmonitor-by-connector-name connector-name)))
 
 (defn monitor-height []
-  "Returns the height in pixels of the current window's monitor (i.e. the one that has most of the window in it)."
+  "Returns the height in pixels of the current window's
+   monitor, i.e. the one that has most of the window in it."
   (. (_get-monitor)
      (get_geometry)
      height))
 
 (defn monitor-is-primary []
-  "Returns `True` if the current window's monitor (i.e. the one that has most of the window in it) is primary, `False` otherwise."
+  "Returns `True` if the current window's monitor,
+   i.e. the one that has most of the window in it,
+   is primary, `False` otherwise."
   (. (_get-monitor)
      (is_primary)))
 
 (defn monitor-width []
-  "Returns the width in pixels of the current window's monitor (i.e. the one that has most of the window in it)."
+  "Returns the width in pixels of the current window's
+   monitor, i.e. the one that has most of the window in it."
   (. (_get-monitor)
      (get_geometry)
      width))
 
 (defmacro on-class-change [#*forms]
   "Runs <forms> on class changes of the current window."
-  `(_attach-to-window-event "class-changed" (fn [] ~forms)))
+  `(_attach-to-window-event "class-changed" (fn [] ~@forms)))
 
 (defmacro on-icon-change [#*forms]
   "Runs <forms> on icon changes of the current window."
-  `(_attach-to-window-event "icon-changed" (fn [] ~forms)))
+  `(_attach-to-window-event "icon-changed" (fn [] ~@forms)))
 
 (defmacro on-name-change [#*forms]
   "Runs <forms> on name changes of the current window."
-  `(_attach-to-window-event "name-changed" (fn [] ~forms)))
+  `(_attach-to-window-event "name-changed" (fn [] ~@forms)))
 
 (setv _*monitors-callbacks* (set))
 (defmacro on-monitors-change [#*forms]
@@ -763,9 +815,9 @@
   "Move window to monitor identified by `monitor-ref-or-direction`.
   `monitor-ref-or-direction` can be one of \"left\", \"right\",
   \"up\" or \"down\" relative to the current window's monitor
-  (i.e. the one that has most of the window in it) or it can be
-  the monitor's connector name as defined by Xrandr (ex: \"DP1\",
-  \"HDMI1\", etc.
+  (i.e. the one that has most of the window in it), \"primary\" for
+  the primary monitor or it can be the monitor's connector name as
+  defined by Xrandr (ex: \"DP1\", \"HDMI1\", etc.
   If preserve-tiling is true, the tiling pattern last set
   for this window will be reapplied after moving it to the
   new monitor.
@@ -961,10 +1013,7 @@
   (setv index 0)
   (setv workspace (window_workspace))
   (for [win (sorted (_wnck-list-windows) :key (fn [ww] (str (ww.get_sort_order))))]
-    (ap-when (_get-prospective-prop
-               win
-               "workspace"
-               (ap-when (. win (get_workspace)) (+ (. it (get_number)) 1)))
+    (ap-when (window-workspace win)
       (when (= it workspace)
         (when (= win *current-window*)
           (break))
@@ -982,9 +1031,9 @@
   (_with-window window
     (for [script-name (*scripts*.keys)]
       (_print-when-verbose "== Running" script-name)
-      (hy.eval (hy.read-many (get *scripts* script-name))))
+      (hy.eval (hy.read-many (get *scripts* script-name)) :filename script-name :locals (globals)))
     (for [eval-str *command-line-args*.eval]
-      (hy.eval (hy.read-many eval-str)))))
+      (hy.eval (hy.read-many eval-str) :locals (globals)))))
 
 (defn _on-monitors-changed [screen]
   (_print-when-verbose "NEW SCREEN CONFIG, RESTARTING ++++++")
