@@ -245,6 +245,14 @@
 (defn _is-valid-tile-pattern [pattern]
   (bool (re.match "^_*[*]+_*$" pattern)))
 
+(setv *onces* {})
+(defmacro _once [key #*forms]
+  "Eval forms once for the given key."
+  `(do (print ~(str+ "ONCE " key "/" forms))
+       (unless (in (str+ ~key "/" ~(str forms)) *onces*)
+         ~@forms
+         (assoc *onces* (str+ ~key "/" ~(str forms)) True))))
+
 (defn _parse-command-line [args]
   (setv parser (argparse.ArgumentParser :description "Act on windows when created"))
   (parser.add-argument 
@@ -480,6 +488,20 @@
 (defn matches [string pattern]
   "True if the regexp pattern matches str"
   (bool (re.search pattern string)))
+  
+(defmacro once [#*forms]
+  "Eval forms only once in a given Angelspie session.
+   Can be useful to, say, close a window once for a specific
+   app."
+  `(_once "global"
+          ~@forms))
+
+(defmacro once-per-window [#*forms]
+  "Eval forms only once for each window in a given Angelspie session.
+   Useful for example to focus newly created windows after they have
+   changed workspace."
+  `(_once (window_xid)
+          ~@forms))
 
 (defn opacity [level]
   "Change the opacity level (as integer in 0..100) of the current window, returns boolean."
@@ -540,6 +562,8 @@
   (*current-window*.minimize)
   True)
 
+
+
 (defn pin []
   "Pin the current window to all workspaces, returns True."
   (*current-window*.pin)
@@ -556,7 +580,10 @@
   (_not-yet-implemented "set_viewport"))
 
 (defn set_workspace [workspace-nb]
-  "Move the window to a specific workspace number, counting from 1, returns boolean."
+  "Move the window to a specific workspace number, counting from 1, returns boolean.
+   Note that moving a window to another workspace makes it lose focus. To keep new
+   windows focused in all situations, you might want to add `(once-per-window (focus))`
+   at the end of your Angelspie scripts."
   (setv target-workspace (. *current-window*
                             (get_screen)
                             (get_workspaces)
@@ -1129,12 +1156,7 @@
   (. (pathlib.Path +last-pattern-shelve+)
      (unlink :missing_ok True))
   (_attach-handler-to-all-screens)
-  (GLib.unix_signal_add
-    GLib.PRIORITY_HIGH
-    signal.SIGINT
-    (fn []
-      (Gtk.main_quit)
-      (Wnck.shutdown)))
+  (signal.signal signal.SIGINT signal.SIG_DFL)
   (Gtk.main))
 
 (defn _main [[args None]]

@@ -63,7 +63,9 @@ In Hy variable/function names `_` and `-` are the same, so `skip_pager` for inst
 
 ## Running
 
-To run, use `pipenv run hy angelspie.hy` in the source directory.
+Grab a release and run the angelspie binary in a terminal window. Once you have your configuration files figured out, you might want to run angelspie on startup.
+
+To run the dev version, clone the git repository then use `pipenv run hy angelspie.hy` in its root directory.
 
 ## Command line use
 
@@ -89,6 +91,9 @@ which will tile the active window right.
 ```
 
 It is loaded both in my keyboard shortcuts and as part of my global Angelspie configuration. This makes tiling adapt to the screen size and work exactly the same at the keyboard and in my Angelspie rules.
+
+You can also run angelspie for a given window by passing the window id as hex or decimal:
+`angelspie --wid 0x123AB23 --eval '(focus)'`
 
 ## APP specific tricks
 
@@ -176,6 +181,16 @@ Set position + size (as string) of current window, returns boolean.
 #### `(matches string pattern)`
 True if the regexp pattern matches str
 
+#### `(once #*forms)`
+Eval forms only once in a given Angelspie session.
+   Can be useful to, say, close a window once for a specific
+   app.
+
+#### `(once-per-window #*forms)`
+Eval forms only once for each window in a given Angelspie session.
+   Useful for example to focus newly created windows after they have
+   changed workspace.
+
 #### `(opacity level)`
 Change the opacity level (as integer in 0..100) of the current window, returns boolean.
 
@@ -202,6 +217,9 @@ Move the window to a specific viewport number, counting from 1, returns boolean.
 
 #### `(set_workspace workspace-nb)`
 Move the window to a specific workspace number, counting from 1, returns boolean.
+   Note that moving a window to another workspace makes it lose focus. To keep new
+   windows focused in all situations, you might want to add `(once-per-window (focus))`
+   at the end of your Angelspie scripts.
 
 #### `(shade)`
 Shade ('roll up') the current window, returns True.
