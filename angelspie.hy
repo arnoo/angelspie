@@ -21,10 +21,11 @@
 (import os)
 (import pathlib)
 (import pgi)
+(pgi.require_version "Gdk" "3.0")
 (pgi.require_version "GdkX11" "3.0")
 (pgi.require_version "Gtk" "3.0")
 (pgi.require_version "Wnck" "3.0")
-(import pgi.repository [GdkX11 GLib Gtk Wnck])
+(import pgi.repository [Gdk GdkX11 GLib Gtk Wnck])
 (import re)
 (import shelve)
 (import signal)
@@ -402,7 +403,7 @@
 
 (defn decorate []
   "Add the window manager decorations to the current window, returns boolean."
-  (*current-gdk-window*.set_decorations 2)
+  (*current-gdk-window*.set_decorations Gdk.WMDecoration.ALL)
   (*current-gdk-window*.get_geometry)
   True)
 
