@@ -67,9 +67,22 @@
       event-name
       (fn [win]
          (_with-window win
-          (lfor c (getattr *current-window* attr-name) (c))))))
+          (lfor c (getattr *current-window* attr-name) (c.call))))))
   (. (getattr *current-window* attr-name)
      (add callback)))
+  
+(defclass _callback_with_code_hash []
+  (defn __init__ [self lambda]
+    (setv self.lambda lambda))
+
+  (defn __hash__ [self]
+    (hash self.lambda.__code__.co_code))
+
+  (defn call [self #*args]
+    (self.lambda #*args))
+
+  (defn __eq__ [self other]
+    (= (self.__hash__) (other.__hash__))))
   
 (defn _docs []
   "Returns the API docs as Markdown"
@@ -144,15 +157,15 @@
   [x y w h])
 
 (defn _get-edid [monitor]
-  (import binascii [hexlify])
-  (str (hexlify (bytearray
-                  (. (*disp*.xrandr_get_output_property (get monitor.crtcs 0)
-                                                        (*disp*.intern_atom "EDID")
-                                                        Xlib.X.AnyPropertyType
-                                                        0
-                                                        100)
-                      _data
-                      ["value"]))) "utf-8"))
+  (str (. (bytearray
+            (. (*disp*.xrandr_get_output_property (get monitor.crtcs 0)
+                                                  (*disp*.intern_atom "EDID")
+                                                  Xlib.X.AnyPropertyType
+                                                  0
+                                                  100)
+                _data
+                ["value"]))
+          (hex)) "utf-8"))
 
 (defn _get-xmonitor-by-connector-name [connector-name [EDID None]]
   (for [m (. *disp*
@@ -244,6 +257,12 @@
                  :help "as code to eval. Disables loading of config files, happens after processing conf_file arguments."
                  :metavar "AS_CODE"
                  :nargs "*")
+  (parser.add-argument
+                 "--load"
+                 :default []
+                 :help "as script to run for each window (by default ~/.config/angelspie/*.as)"
+                 :metavar "LOAD_FILE"
+                 :nargs "*")
   (parser.add-argument 
                  "-v"
                   "--verbose"
@@ -251,11 +270,9 @@
                  :const True
                  :help "Verbose output")
   (parser.add-argument
-                 "--load"
-                 :default []
-                 :help "as script to run for each window (by default ~/.config/angelspie/*.as)"
-                 :metavar "LOAD_FILE"
-                 :nargs "*")
+                 "--wid"
+                 :help "Execute scripts once, for window with XID <wid>."
+                 :nargs "?")
   (parser.parse-args))
 
 (defn _not-yet-implemented [fn-name]
@@ -313,6 +330,16 @@
   (for [window (_wnck-list-windows :force-update force-update)]
     (when (window.is_active)
       (return window))))
+
+(defn _wnck-get-window-by-xid [xid [force-update False]]
+  (setv xid (if (xid.startswith "0x")
+                (int.from_bytes (bytes.fromhex (cut xid 2 None)) "big")
+                (int xid)))
+  (for [window (_wnck-list-windows :force-update force-update)]
+    (when (= (window.get_xid) xid)
+      (return window)))
+  (print f"No window found with XID {xid}")
+  (sys.exit 1))
 
 (defn _wnck-list-screens []
   (setv screens [])
@@ -375,11 +402,9 @@
 
 (defn decorate []
   "Add the window manager decorations to the current window, returns boolean."
-  (*current-xwindow*.change_property
-    (*disp*.intern_atom "_MOTIF_WM_HINTS")
-    (*disp*.intern_atom "_MOTIF_WM_HINTS")
-    32
-    [0x0 0x0 0x0 0x0 0x0]))
+  (*current-gdk-window*.set_decorations 2)
+  (*current-gdk-window*.get_geometry)
+  True)
 
 (defmacro dsif [cond-clause then-clause [else-clause None]]
   "Equivalent to Devilspie's if. Like Hy's builtin if, but the else clause is optional.
@@ -473,6 +498,26 @@
   ;  32
   ;  data)
   (_not-yet-implemented "opacity"))
+
+;TODO ?
+;(defn disable_mouseover []
+;  (*current-xwindow*.grab_pointer
+;     True
+;     Xlib.X.EnterWindowMask
+;     Xlib.X.GrabModeSync ; pointer_mode
+;     Xlib.X.GrabModeSync ; keyboard_mode
+;     0 ; confine_to
+;     0 ; cursor
+;     (time.time) ;time
+;     ))
+;  (setv event_mask X.PointerMotionMask)
+;  (*current-xwindow*.change_attributes
+;    :event_mask event_mask
+;    :do_not_propagate_mask event_mask
+;    :cursor X.NONE
+;    :override_redirect True
+;    :enter_window: 0
+;    :leave_window: 0))
 
 (defn maximize []
   "Maximise the current window, returns True."
@@ -702,9 +747,19 @@
     (for [i (range (browser-accessible.get_child_count))]
       (setv browser-window (. browser-accessible (getChildAtIndex i)))
       (when (browser-window.name.startswith wname)
+        (print browser-window.name ".startswith" wname)
         (setv url-bar (_get-accessible-child-by-attr-value browser-window
                                                           urlbar-attr
                                                           urlbar-attr-val))
+        (when (= url-bar None)
+          (print "URL BAR NOT FOUND")
+          (import pprint)
+          (pyatspi.findDescendant browser-window
+                          (fn [x] (print x) (pprint.pprint (.x (get_attributes)))
+                                  (= (. x (get_attributes) [urlbar-attr])
+                                     urlbar-attr-val))
+                          :breadth_first True)
+          (print "========="))
         (setv url (. url-bar
                     (queryText)
                     (getText 0 -1)))
@@ -798,20 +853,20 @@
 
 (defmacro on-class-change [#*forms]
   "Runs <forms> on class changes of the current window."
-  `(_attach-to-window-event "class-changed" (fn [] ~@forms)))
+  `(_attach-to-window-event "class-changed" (_callback_with_code_hash (fn [] ~@forms))))
 
 (defmacro on-icon-change [#*forms]
   "Runs <forms> on icon changes of the current window."
-  `(_attach-to-window-event "icon-changed" (fn [] ~@forms)))
+  `(_attach-to-window-event "icon-changed" (_callback_with_code_hash (fn [] ~@forms))))
 
 (defmacro on-name-change [#*forms]
   "Runs <forms> on name changes of the current window."
-  `(_attach-to-window-event "name-changed" (fn [] ~@forms)))
+  `(_attach-to-window-event "name-changed" (_callback_with_code_hash (fn [] ~@forms))))
 
 (setv _*monitors-callbacks* (set))
 (defmacro on-monitors-change [#*forms]
   "Runs <forms> on changes in monitor setup."
-  `(_*monitors-callbacks*.add (fn [] ~forms)))
+  `(_*monitors-callbacks*.add (_callback_with_code_hash (fn [] ~@forms))))
 
 (defn set-monitor [monitor-ref-or-direction [preserve-tiling False]]
   "Move window to monitor identified by `monitor-ref-or-direction`.
@@ -1043,7 +1098,7 @@
   (_print-when-verbose "NEW SCREEN CONFIG, RESTARTING ++++++")
   (list (map _process-window (_wnck-list-windows)))
   (for [callback _*monitors-callbacks*]
-       (callback)))
+       (callback.call)))
 
 (defn _on-new-window [screen window]
   (_print-when-verbose "NEW WINDOW ++++++")
@@ -1093,8 +1148,11 @@
     (sys.exit 0))
   
   (_load-scripts)
-  (if *command-line-args*.eval
-    (_process-window (_wnck-get-active-window :force-update True))
+  (if (or *command-line-args*.eval
+          *command-line-args*.wid)
+    (_process-window (if *command-line-args*.wid
+                         (_wnck-get-window-by-xid *command-line-args*.wid :force-update True)
+                         (_wnck-get-active-window :force-update True)))
     (_main-loop)))
 
 (when (= __name__ "__main__")
