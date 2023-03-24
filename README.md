@@ -37,30 +37,6 @@ Here's an example `.as` script that shows a few possibilities:
 
 Angelspie is written in [Hy](http://hylang.org/) and so are its configuration files. Any Hy function or macro can be used in the configuration scripts. This means that you can do anything you can do with Python and more.
 
-## Devilspie compatibility
-
-In `.as` files, there are a few changes from Devilspie syntax made to avoid ugly redefinitions of Hy reserved words:
-- `geometry` considers coordinates relative to the window's current monitor (i.e. the one with most of the current window on it) unless you set `(settings ref-frame RefFrame.SCREEN)`
-- `if` has been renamed `dsif` (for Devilspie `if`). The difference with Hy's builtin `if` is that the else clause is optional in `dsif`
-- `is` is removed in favor of Hy's built-in `=`
-- `print` has been renamed `dsprint`
-- `str` has been renamed `str+`
-
-The following Devilspie functions are as of yet unimplemented:
-- `opacity`
-- `set_viewport`
-- `stick`
-- `unstick`
-- `wintype`
-- `window_role`
-
-You'll get a warning when your configuration script calls an undefined function. I welcome pull requests in the hope of making this at some point a complete drop-in replacement for Devilspie.
-
-`skip_pager` and `skip_tasklist` can be called with a boolean to toggle skipping of pager/tasklist.
-
-In Hy variable/function names `_` and `-` are the same, so `skip_pager` for instance can be called `skip-pager`, which is more lispy.
-
-
 ## Running
 
 Grab a release and run the angelspie binary in a terminal window. Once you have your configuration files figured out, you might want to run angelspie on startup.
@@ -103,12 +79,6 @@ Add this at the very beginning of your ~/.emacs/init.el to prevent Emacs from re
 
 `(setq frame-inhibit-implied-resize t) ;; prevent resize window on startup`
 
-
-### Firefox
-
-Angelspie combined with "I Hate Tabs - SDI extension" gives you Firefox with tiling windows instead of tabs.
-
-
 ### XFCE
 
 
@@ -119,6 +89,30 @@ This forces the XFCE workspace switcher to re-adjust to the new display geometry
   (spawn-async "xfconf-query -c xfce4-panel -p /plugins/plugin-2/miniature-view -s false;
                 xfconf-query -c xfce4-panel -p /plugins/plugin-2/miniature-view -s true"))
 ```
+
+## Devilspie compatibility
+
+In `.as` files, there are a few changes from Devilspie syntax made to avoid ugly redefinitions of Hy reserved words:
+- `if` has been renamed `dsif` (for Devilspie `if`). The difference with Hy's builtin `if` is that the else clause is optional in `dsif`
+- `is` is removed in favor of Hy's built-in `=`
+- `print` has been renamed `dsprint`
+- `str` has been renamed `str+`
+
+By contrast with Devilspie, `geometry` considers coordinates relative to the window's current monitor (i.e. the one with most of the current window on it) unless you set `(setting ref-frame RefFrame.SCREEN)`.
+
+The following Devilspie functions are as of yet unimplemented:
+- `opacity`
+- `set_viewport`
+- `stick`
+- `unstick`
+- `wintype`
+- `window_role`
+
+You'll get a warning when your configuration script calls an undefined function. I welcome pull requests in the hope of making this at some point a complete drop-in replacement for Devilspie.
+
+`skip_pager` and `skip_tasklist` can be called with a boolean to toggle skipping of pager/tasklist.
+
+In Hy variable/function names `_` and `-` are the same, so `skip_pager` for instance can be called `skip-pager`, which is more lispy.
 
 
 
@@ -169,30 +163,22 @@ Make the current window fullscreen, returns True.
 Set position + size (as string) of current window, returns boolean.
    geom-str should be in X-GeometryString format:
     `[=][<width>{xX}<height>][{+-}<xoffset>{+-}<yoffset>]`
-   as an extension to the X-GeometryString format, all values
+
+   As an extension to the X-GeometryString format, all values
    can be specified as percentages of screen/monitor size. For
    percentages of screen size, set setting "ref-frame" to RefFrame.SCREEN
+
    Examples:
-       `(geometry "400×300+0-22")`
-       `(geometry "640×480")`
-       `(geometry "100%×50%+0+0")`
-       `(geometry "+10%+10%")`
+-  `(geometry "400×300+0-22")`
+-  `(geometry "640×480")`
+-  `(geometry "100%×50%+0+0")`
+-  `(geometry "+10%+10%")`
 
 #### `(matches string pattern)`
 True if the regexp pattern matches str
 
-#### `(once #*forms)`
-Eval forms only once in a given Angelspie session.
-   Can be useful to, say, close a window once for a specific
-   app.
-
-#### `(once-per-window #*forms)`
-Eval forms only once for each window in a given Angelspie session.
-   Useful for example to focus newly created windows after they have
-   changed workspace.
-
 #### `(opacity level)`
-Change the opacity level (as integer in 0..100) of the current window, returns boolean.
+NOT YET IMPLEMENTED. Change the opacity level (as integer in 0..100) of the current window, returns boolean.
 
 #### `(maximize)`
 Maximise the current window, returns True.
@@ -213,7 +199,7 @@ Pin the current window to all workspaces, returns True.
 Print args with trailing newline, returns True.
 
 #### `(set_viewport viewport-nb)`
-Move the window to a specific viewport number, counting from 1, returns boolean.
+NOT YET IMPLEMENTED. Move the window to a specific viewport number, counting from 1, returns boolean.
 
 #### `(set_workspace workspace-nb)`
 Move the window to a specific workspace number, counting from 1, returns boolean.
@@ -239,7 +225,7 @@ Execute a command in the background, returns boolean. Command is given as a sing
 Execute  a  command in the foreground (returns command output as string, or `False` on error). Command is given as a single string, or as a series of strings (similar to execl).
 
 #### `(stick)`
-Make the current window stick to all viewports, returns True.
+NOT YET IMPLEMENTED. Make the current window stick to all viewports, returns True.
 
 #### `(str+ #*args)`
 Transform parameters into strings and concat them with spaces in between.
@@ -260,7 +246,7 @@ Unpin the current window from all workspaces, returns True.
 Un-shade ('roll down') the current window, returns True.
 
 #### `(unstick)`
-Unstick the window from viewports, returns True.
+NOT YET IMPLEMENTED. Unstick the window from viewports, returns True.
 
 #### `(wintype type)`
 Set the window type of the current window, returns boolean. Accepted values are: normal, dialog, menu, toolbar, splashscreen, utility, dock, desktop.
@@ -294,10 +280,21 @@ Set Angelspie setting <varname> to the result of evaluating val-form
    in each window/monitor/etc. context where the setting is needed.
 
 #### `(browser-favicon [use-full-url False])`
-None
+Gets the favicon for the active tab of a browser window.
+   Uses browser-url, so only works properly on Firefox at
+   the moment.
 
 #### `(browser-url)`
-None
+Gets the URL for the active tab of a browser window
+   using accessibility APIs. You need to start the browser
+   with the GNOME_ACCESSIBILITY environment variable set
+   to 1. 
+   Works well on Firefox, flaky on Chrome/Chromium.
+
+#### `(desktop)`
+Makes a window fullscreen and below all other windows.
+   Can be used to set a browser window as wallpaper for instance.
+   Not yet fully satisfactory, at least with XFCE/Firefox.
 
 #### `(empty geom-str [workspace-nb None])`
 Returns True if rectangle corresponding to geom-str is empty,
@@ -340,7 +337,7 @@ Returns the width in pixels of the current window's
 #### `(on-class-change #*forms)`
 Runs <forms> on class changes of the current window.
 
-#### `(on-icon-change #*forms)`
+#### `(on-icon-chang #*forms)`
 Runs <forms> on icon changes of the current window.
 
 #### `(on-name-change #*forms)`
@@ -348,6 +345,16 @@ Runs <forms> on name changes of the current window.
 
 #### `(on-monitors-change #*forms)`
 Runs <forms> on changes in monitor setup.
+
+#### `(once #*forms)`
+Eval forms only once in a given Angelspie session.
+   Can be useful to, say, close a window once for a specific
+   app.
+
+#### `(once-per-window #*forms)`
+Eval forms only once for each window in a given Angelspie session.
+   Useful for example to focus newly created windows after they have
+   changed workspace.
 
 #### `(set-monitor monitor-ref-or-direction [preserve-tiling False])`
 Move window to monitor identified by `monitor-ref-or-direction`.
@@ -372,23 +379,23 @@ Tile the current window according to v-pattern and h-pattern.
 
 #### `(tile-at position)`
 Tile the current window. `position` can be one of :
-     - "last"          resume the last tiling pattern for this particular window
-     - "left"          which is equivalent to `(tile "*"    "*_" )`
-     - "right"         which is equivalent to `(tile "*"    "_*" )`
-     - "top"           which is equivalent to `(tile "_*"   "*"  )`
-     - "top-left"      which is equivalent to `(tile "_*"   "*_" )`
-     - "top-right"     which is equivalent to `(tile "_*"   "_*" )`
-     - "center"        which is equivalent to `(tile "_**_" "_**_")`
-     - "center-left"   which is equivalent to `(tile "_**_" "*_" )`
-     - "center-right"  which is equivalent to `(tile "_**_" "_*" )`
-     - "bottom"        which is equivalent to `(tile "_*"   "*"  )`
-     - "bottom-left"   which is equivalent to `(tile "_*"   "*_" )`
-     - "bottom-right"  which is equivalent to `(tile "_*"   "_*" )`
-     - "full"          which is equivalent to `(tile "*"    "*"  )`
+- "last"          resume the last tiling pattern for this particular window
+- "left"          which is equivalent to `(tile "*"    "*_" )`
+- "right"         which is equivalent to `(tile "*"    "_*" )`
+- "top"           which is equivalent to `(tile "_*"   "*"  )`
+- "top-left"      which is equivalent to `(tile "_*"   "*_" )`
+- "top-right"     which is equivalent to `(tile "_*"   "_*" )`
+- "center"        which is equivalent to `(tile "_**_" "_**_")`
+- "center-left"   which is equivalent to `(tile "_**_" "*_" )`
+- "center-right"  which is equivalent to `(tile "_**_" "_*" )`
+- "bottom"        which is equivalent to `(tile "_*"   "*"  )`
+- "bottom-left"   which is equivalent to `(tile "_*"   "*_" )`
+- "bottom-right"  which is equivalent to `(tile "_*"   "_*" )`
+- "full"          which is equivalent to `(tile "*"    "*"  )`
    See the documentation for `tile` for more information.
 
 #### `(tile-move direction)`
-Move the current window in <direction> within
+Move the current window in `<direction>` within
    its current tiling pattern.
 
 #### `(set-window-class class)`

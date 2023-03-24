@@ -29,6 +29,7 @@
 (import re)
 (import shelve)
 (import signal)
+(import struct)
 (import sys)
 (import time)
 (import Xlib)
@@ -158,7 +159,7 @@
   [x y w h])
 
 (defn _get-edid [monitor]
-  (str (. (bytearray
+  (. (bytearray
             (. (*disp*.xrandr_get_output_property (get monitor.crtcs 0)
                                                   (*disp*.intern_atom "EDID")
                                                   Xlib.X.AnyPropertyType
@@ -166,7 +167,7 @@
                                                   100)
                 _data
                 ["value"]))
-          (hex)) "utf-8"))
+          (hex)))
 
 (defn _get-xmonitor-by-connector-name [connector-name [EDID None]]
   (for [m (. *disp*
@@ -248,10 +249,9 @@
 (setv *onces* {})
 (defmacro _once [key #*forms]
   "Eval forms once for the given key."
-  `(do (print ~(str+ "ONCE " key "/" forms))
-       (unless (in (str+ ~key "/" ~(str forms)) *onces*)
-         ~@forms
-         (assoc *onces* (str+ ~key "/" ~(str forms)) True))))
+  `(unless (in (str+ ~key "/" ~(str forms)) *onces*)
+     ~@forms
+     (assoc *onces* (str+ ~key "/" ~(str forms)) True)))
 
 (defn _parse-command-line [args]
   (setv parser (argparse.ArgumentParser :description "Act on windows when created"))
@@ -373,7 +373,12 @@
 
 (defn above []
   "Set the current window to be above all normal windows, returns True."
-  (*current-window*.make_above)
+  (*current-xwindow*.change_property
+    (*disp*.intern_atom "_NET_WM_STATE")
+    Xlib.Xatom.ATOM
+    32
+    [(*disp*.intern_atom "_NET_WM_STATE_ABOVE")]
+    Xlib.X.PropModeAppend)
   True)
 
 (defmacro begin [#*forms]
@@ -382,7 +387,13 @@
 
 (defn below []
   "Set the current window to be below all normal windows, returns True."
-  (*current-window*.make_below)
+  (*current-xwindow*.change_property
+    (*disp*.intern_atom "_NET_WM_STATE")
+    Xlib.Xatom.ATOM
+    32
+    [(*disp*.intern_atom "_NET_WM_STATE_BELOW")]
+    Xlib.X.PropModeAppend)
+  (*disp*.flush)
   True)
 
 (defn center []
@@ -466,14 +477,16 @@
   "Set position + size (as string) of current window, returns boolean.
    geom-str should be in X-GeometryString format:
     `[=][<width>{xX}<height>][{+-}<xoffset>{+-}<yoffset>]`
-   as an extension to the X-GeometryString format, all values
+
+   As an extension to the X-GeometryString format, all values
    can be specified as percentages of screen/monitor size. For
    percentages of screen size, set setting \"ref-frame\" to RefFrame.SCREEN
+
    Examples:
-       `(geometry \"400×300+0-22\")`
-       `(geometry \"640×480\")`
-       `(geometry \"100%×50%+0+0\")`
-       `(geometry \"+10%+10%\")`"
+-  `(geometry \"400×300+0-22\")`
+-  `(geometry \"640×480\")`
+-  `(geometry \"100%×50%+0+0\")`
+-  `(geometry \"+10%+10%\")`"
   (try
     (setv [x y w h] (_parse-geom-str geom-str))
     (except [ValueError]
@@ -488,23 +501,9 @@
 (defn matches [string pattern]
   "True if the regexp pattern matches str"
   (bool (re.search pattern string)))
-  
-(defmacro once [#*forms]
-  "Eval forms only once in a given Angelspie session.
-   Can be useful to, say, close a window once for a specific
-   app."
-  `(_once "global"
-          ~@forms))
-
-(defmacro once-per-window [#*forms]
-  "Eval forms only once for each window in a given Angelspie session.
-   Useful for example to focus newly created windows after they have
-   changed workspace."
-  `(_once (window_xid)
-          ~@forms))
 
 (defn opacity [level]
-  "Change the opacity level (as integer in 0..100) of the current window, returns boolean."
+  "NOT YET IMPLEMENTED. Change the opacity level (as integer in 0..100) of the current window, returns boolean."
 	;v=0xffffffff/100*level;
 	;XChangeProperty (gdk_x11_get_default_xdisplay (), wnck_window_get_xid(c->window),
 	;	my_wnck_atom_get ("_NET_WM_WINDOW_OPACITY"),
@@ -521,26 +520,6 @@
   ;  32
   ;  data)
   (_not-yet-implemented "opacity"))
-
-;TODO ?
-;(defn disable_mouseover []
-;  (*current-xwindow*.grab_pointer
-;     True
-;     Xlib.X.EnterWindowMask
-;     Xlib.X.GrabModeSync ; pointer_mode
-;     Xlib.X.GrabModeSync ; keyboard_mode
-;     0 ; confine_to
-;     0 ; cursor
-;     (time.time) ;time
-;     ))
-;  (setv event_mask X.PointerMotionMask)
-;  (*current-xwindow*.change_attributes
-;    :event_mask event_mask
-;    :do_not_propagate_mask event_mask
-;    :cursor X.NONE
-;    :override_redirect True
-;    :enter_window: 0
-;    :leave_window: 0))
 
 (defn maximize []
   "Maximise the current window, returns True."
@@ -576,7 +555,7 @@
   True)
 
 (defn set_viewport [viewport-nb]
-  "Move the window to a specific viewport number, counting from 1, returns boolean."
+  "NOT YET IMPLEMENTED. Move the window to a specific viewport number, counting from 1, returns boolean."
   (_not-yet-implemented "set_viewport"))
 
 (defn set_workspace [workspace-nb]
@@ -627,7 +606,7 @@
            "utf-8"))
 
 (defn stick []
-  "Make the current window stick to all viewports, returns True."
+  "NOT YET IMPLEMENTED. Make the current window stick to all viewports, returns True."
   (_not-yet-implemented "stick"))
 
 (defn str+ [#*args]
@@ -661,7 +640,7 @@
   True)
 
 (defn unstick []
-  "Unstick the window from viewports, returns True."
+  "NOT YET IMPLEMENTED. Unstick the window from viewports, returns True."
   (_not-yet-implemented "unstick")
   True)
 
@@ -747,13 +726,24 @@
 (_defsetting "tile-row-gap"       0 (| int str))
 
 (defn browser-favicon [[use-full-url False]]
+  "Gets the favicon for the active tab of a browser window.
+   Uses browser-url, so only works properly on Firefox at
+   the moment."
   (ap-when (browser-url)
     (_favicon-for-url it :use-full-url use-full-url)))
 
 (defn browser-url []
+  "Gets the URL for the active tab of a browser window
+   using accessibility APIs. You need to start the browser
+   with the GNOME_ACCESSIBILITY environment variable set
+   to 1. 
+   Works well on Firefox, flaky on Chrome/Chromium."
   (import pyatspi)
   (setv wname (window-name))
   (case (window_class)
+    "Chrome" (do (setv accessible-name "Chrome")
+                 (setv urlbar-attr "class")
+                 (setv urlbar-attr-val "OmniboxViewViews"))
     "Chromium" (do (setv accessible-name "Chromium")
                    (setv urlbar-attr "class")
                    (setv urlbar-attr-val "OmniboxViewViews"))
@@ -802,6 +792,27 @@
           (setv url (+ (if (= location-icon-text "Not secure") "http" "https") "://" url)))
         (return url))))
   (return None))
+  
+(defn desktop []
+  "Makes a window fullscreen and below all other windows.
+   Can be used to set a browser window as wallpaper for instance.
+   Not yet fully satisfactory, at least with XFCE/Firefox."
+  ;TODO: add a transparent overlay window that disables mouseover events ?
+  ; ADD event to keep below at all costs ?
+  (fullscreen)
+  (*current-xwindow*.change_property
+    (*disp*.intern_atom "_NET_WM_WINDOW_TYPE")
+    Xlib.Xatom.ATOM
+    32
+    [(*disp*.intern_atom "_NET_WM_WINDOW_TYPE_DESKTOP")]
+    Xlib.X.PropModeReplace)
+  (*current-xwindow*.change_property
+    (*disp*.intern_atom "_NET_WM_STATE")
+    Xlib.Xatom.ATOM
+    32
+    [(*disp*.intern_atom "_NET_WM_STATE_DESKTOP") (*disp*.intern_atom "_NET_WM_STATE_BELOW")]
+    Xlib.X.PropModeReplace)
+  (*disp*.flush))
 
 (defn empty [geom-str [workspace-nb None]]
   "Returns True if rectangle corresponding to geom-str is empty,
@@ -883,7 +894,7 @@
   "Runs <forms> on class changes of the current window."
   `(_attach-to-window-event "class-changed" (_callback_with_code_hash (fn [] ~@forms))))
 
-(defmacro on-icon-change [#*forms]
+(defmacro on-icon-chang [#*forms]
   "Runs <forms> on icon changes of the current window."
   `(_attach-to-window-event "icon-changed" (_callback_with_code_hash (fn [] ~@forms))))
 
@@ -895,6 +906,20 @@
 (defmacro on-monitors-change [#*forms]
   "Runs <forms> on changes in monitor setup."
   `(_*monitors-callbacks*.add (_callback_with_code_hash (fn [] ~@forms))))
+  
+(defmacro once [#*forms]
+  "Eval forms only once in a given Angelspie session.
+   Can be useful to, say, close a window once for a specific
+   app."
+  `(_once "global"
+          ~@forms))
+
+(defmacro once-per-window [#*forms]
+  "Eval forms only once for each window in a given Angelspie session.
+   Useful for example to focus newly created windows after they have
+   changed workspace."
+  `(_once (window_xid)
+          ~@forms))
 
 (defn set-monitor [monitor-ref-or-direction [preserve-tiling False]]
   "Move window to monitor identified by `monitor-ref-or-direction`.
@@ -992,19 +1017,19 @@
 
 (defn tile-at [position]
   "Tile the current window. `position` can be one of :
-     - \"last\"          resume the last tiling pattern for this particular window
-     - \"left\"          which is equivalent to `(tile \"*\"    \"*_\" )`
-     - \"right\"         which is equivalent to `(tile \"*\"    \"_*\" )`
-     - \"top\"           which is equivalent to `(tile \"_*\"   \"*\"  )`
-     - \"top-left\"      which is equivalent to `(tile \"_*\"   \"*_\" )`
-     - \"top-right\"     which is equivalent to `(tile \"_*\"   \"_*\" )`
-     - \"center\"        which is equivalent to `(tile \"_**_\" \"_**_\")`
-     - \"center-left\"   which is equivalent to `(tile \"_**_\" \"*_\" )`
-     - \"center-right\"  which is equivalent to `(tile \"_**_\" \"_*\" )`
-     - \"bottom\"        which is equivalent to `(tile \"_*\"   \"*\"  )`
-     - \"bottom-left\"   which is equivalent to `(tile \"_*\"   \"*_\" )`
-     - \"bottom-right\"  which is equivalent to `(tile \"_*\"   \"_*\" )`
-     - \"full\"          which is equivalent to `(tile \"*\"    \"*\"  )`
+- \"last\"          resume the last tiling pattern for this particular window
+- \"left\"          which is equivalent to `(tile \"*\"    \"*_\" )`
+- \"right\"         which is equivalent to `(tile \"*\"    \"_*\" )`
+- \"top\"           which is equivalent to `(tile \"_*\"   \"*\"  )`
+- \"top-left\"      which is equivalent to `(tile \"_*\"   \"*_\" )`
+- \"top-right\"     which is equivalent to `(tile \"_*\"   \"_*\" )`
+- \"center\"        which is equivalent to `(tile \"_**_\" \"_**_\")`
+- \"center-left\"   which is equivalent to `(tile \"_**_\" \"*_\" )`
+- \"center-right\"  which is equivalent to `(tile \"_**_\" \"_*\" )`
+- \"bottom\"        which is equivalent to `(tile \"_*\"   \"*\"  )`
+- \"bottom-left\"   which is equivalent to `(tile \"_*\"   \"*_\" )`
+- \"bottom-right\"  which is equivalent to `(tile \"_*\"   \"_*\" )`
+- \"full\"          which is equivalent to `(tile \"*\"    \"*\"  )`
    See the documentation for `tile` for more information."
   (case position
     "last"         (ap-if (_last-tiling-pattern)
@@ -1029,7 +1054,7 @@
                        (return False))))
 
 (defn tile-move [direction]
-  "Move the current window in <direction> within
+  "Move the current window in `<direction>` within
    its current tiling pattern."
   (ap-if (_last-tiling-pattern)
     (setv [v-pattern h-pattern] it)
@@ -1079,7 +1104,7 @@
   "Make the current window not fullscreen, returns True."
   (*current-window*.set_fullscreen False)
   True)
-  
+
 (defn window-index []
   "Returns the index of the window in the taskbar."
   (*current-window*.get_sort_order))
