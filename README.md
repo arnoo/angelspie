@@ -1,12 +1,10 @@
 ![Angelspie logo](https://github.com/arnoo/angelspie/blob/master/logo/readme_header.png?raw=true)
 
-Angelspie is a tool to apply rules to windows on Linux: placement, workspace, tiling, decorations… based on window name, class, role…
+Angelspie is a tool to apply rules to application windows on Linux: set their placement, workspace, decorations… based on window name, class, role…
 
-Angelspie is intended as a drop-in replacement for Devilspie which is unmaintained and now segfaults way too often.
+Angelspie is designed for easy migration from Devilspie, which is unmaintained.
 
-Compared to Devilspie, Angelspie has some added functionality for tiling and multi monitor setups. It also repositions windows when display configuration changes (monitor added or removed for instance).
-
-If you start Angelspie and no configuration files exist, configuration files will be built based on your Devilspie config if you have one. 
+Compared to Devilspie, Angelspie has some added functionality for tiling and multi-monitor setups. It also repositions windows when display configuration changes (monitor added or removed for instance).
 
 ## Configuration
 
@@ -28,20 +26,26 @@ Here's an example `.as` script that shows a few possibilities:
 
 (when (in (window_class)
           ["Gitlab-board" "JIRA-board"])
-  (unpin)
-  (tile-at "full")
   (when (monitor-connected "DP1")
     (set-monitor "DP1")
-    (pin)))
+    (pin)
+    (return))
+  (set-workspace 5)
+  (unpin)
+  (tile-at "full"))
 ```
 
 Angelspie is written in [Hy](http://hylang.org/) and so are its configuration files. Any Hy function or macro can be used in the configuration scripts. This means that you can do anything you can do with Python and more.
 
 ## Running
 
-Grab a release and run the angelspie binary in a terminal window. Once you have your configuration files figured out, you might want to run angelspie on startup.
+Grab a release and run the angelspie "binary" in a terminal window. Once you have your configuration files figured out, you might want to run angelspie on startup.
 
-To run the dev version, clone the git repository then use `pipenv run hy angelspie.hy` in its root directory.
+To run the dev version:
+- clone the git repository
+- `cd` into it
+- install the dependencies with `pipenv install`
+- run using `pipenv run hy angelspie.hy`
 
 ## Command line use
 
@@ -92,6 +96,8 @@ This forces the XFCE workspace switcher to re-adjust to the new display geometry
 
 ## Devilspie compatibility
 
+If you start Angelspie and no configuration files exist, configuration files will be built based on your Devilspie config if you have one. 
+
 In `.as` files, there are a few changes from Devilspie syntax made to avoid ugly redefinitions of Hy reserved words:
 - `if` has been renamed `dsif` (for Devilspie `if`). The difference with Hy's builtin `if` is that the else clause is optional in `dsif`
 - `is` is removed in favor of Hy's built-in `=`
@@ -114,7 +120,12 @@ You'll get a warning when your configuration script calls an undefined function.
 
 In Hy variable/function names `_` and `-` are the same, so `skip_pager` for instance can be called `skip-pager`, which is more lispy.
 
+## Roadmap
+- implement missing Devilspie functions
+- CI and a solid non regression suite (maybe based on docker + virtual Xorg displays ?)
+- make `browser-url` work properly on Chrome/Chromium
 
+You can contribute by submitting a PR for any of these items.
 
 ## API documentation
 ### DEVILSPIE FUNCTIONS/MACROS
