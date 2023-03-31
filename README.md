@@ -124,8 +124,9 @@ In Hy variable/function names `_` and `-` are the same, so `skip_pager` for inst
 - implement missing Devilspie functions
 - CI and a solid non regression suite (maybe based on docker + virtual Xorg displays ?)
 - make `browser-url` work properly on Chrome/Chromium
+- provide better tools to work with browsers and make webapp management more acceptable
 
-You can contribute by submitting a PR for any of these items.
+Contributions are welcome.
 
 ## API documentation
 ### DEVILSPIE FUNCTIONS/MACROS
