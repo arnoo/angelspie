@@ -39,13 +39,14 @@ Angelspie is written in [Hy](http://hylang.org/) and so are its configuration fi
 
 ## Running
 
-Grab a release and run the angelspie "binary" in a terminal window. Once you have your configuration files figured out, you might want to run angelspie on startup.
+Standalone releases are not yet ready (help is more than welcome on the packaging front). You'll need to run the dev version for now:
 
-To run the dev version:
 - clone the git repository
 - `cd` into it
 - install the dependencies with `pipenv install`
 - run using `pipenv run hy angelspie.hy`
+
+Once you have your configuration files figured out, you might want to run angelspie on startup.
 
 ## Command line use
 
@@ -121,6 +122,7 @@ You'll get a warning when your configuration script calls an undefined function.
 In Hy variable/function names `_` and `-` are the same, so `skip_pager` for instance can be called `skip-pager`, which is more lispy.
 
 ## Roadmap
+- proper packaging and binary releases
 - implement missing Devilspie functions
 - CI and a solid non regression suite (maybe based on docker + virtual Xorg displays ?)
 - make `browser-url` work properly on Chrome/Chromium
