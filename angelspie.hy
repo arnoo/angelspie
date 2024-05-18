@@ -20,18 +20,19 @@
 (import math)
 (import os)
 (import pathlib)
-(import pgi)
-(pgi.require_version "Gdk" "3.0")
-(pgi.require_version "GdkX11" "3.0")
-(pgi.require_version "Gtk" "3.0")
-(pgi.require_version "Wnck" "3.0")
-(import pgi.repository [Gdk GdkX11 GLib Gtk Wnck])
+(import gi)
+(gi.require_version "Gdk" "3.0")
+(gi.require_version "GdkX11" "3.0")
+(gi.require_version "Gtk" "3.0")
+(gi.require_version "Wnck" "3.0")
+(import gi.repository [Gdk GdkX11 GLib Gtk Wnck])
 (import re)
 (import shelve)
 (import signal)
 (import struct)
 (import sys)
 (import time)
+(import weakref)
 (import Xlib)
 (import Xlib.display)
 (import Xlib.ext [randr])
@@ -44,14 +45,14 @@
 
 ;; UTILS
 
-(defmacro _with-window [window #*forms]
+(defmacro _with-window [window #* forms]
   `(do (global *current-window*
                *current-xwindow*
                *current-gdk-window*)
-       (setv *current-window* ~window)
-       (setv *current-xwindow* (*disp*.create_resource_object "window" (. ~window (get_xid))))
-       (setv *current-gdk-window* (GdkX11.X11Window.foreign_new_for_display *gdk-disp* (. ~window (get_xid))))
+       (setv *current-window* (weakref.proxy ~window))
        (*gdk-disp*.error_trap_push)
+       (setv *current-xwindow* (*disp*.create_resource_object "window" (. *current-window* (get_xid))))
+       (setv *current-gdk-window* (GdkX11.X11Window.foreign_new_for_display *gdk-disp* (. *current-window* (get_xid))))
        (try
             ~@forms
             (except [e [Xlib.error.BadDrawable Xlib.error.BadWindow]]
@@ -80,8 +81,8 @@
   (defn __hash__ [self]
     (hash self.lambda.__code__.co_code))
 
-  (defn call [self #*args]
-    (self.lambda #*args))
+  (defn call [self #* args]
+    (self.lambda #* args))
 
   (defn __eq__ [self other]
     (= (self.__hash__) (other.__hash__))))
@@ -234,7 +235,7 @@
                             (screen-height)
                             (monitor-height))))
 
-(defmacro _insist-on-geometry [#*forms]
+(defmacro _insist-on-geometry [#* forms]
   "Eval forms a few times… intended to call wnck move/resize twice,
    as wnck move/resize seems to often apply only internally but not onscreen."
   `(for [_ (range 1)]
@@ -247,7 +248,7 @@
   (bool (re.match "^_*[*]+_*$" pattern)))
 
 (setv *onces* {})
-(defmacro _once [key #*forms]
+(defmacro _once [key #* forms]
   "Eval forms once for the given key."
   `(unless (in (str+ ~key "/" ~(str forms)) *onces*)
      ~@forms
@@ -287,9 +288,9 @@
 (defn _not-yet-implemented [fn-name]
   (print f"WARNING: Call to function '{fn-name}' which is not yet implemented."))
 
-(defn _print-when-verbose [#*args]
+(defn _print-when-verbose [#* args]
   (when *command-line-args*.verbose
-     (print #*args)))
+     (print #* args)))
 
 (defn _set-prospective-prop [obj prop value]
   (setattr obj (+ "_angelspie_pending_" prop) value)
@@ -381,7 +382,7 @@
     Xlib.X.PropModeAppend)
   True)
 
-(defmacro begin [#*forms]
+(defmacro begin [#* forms]
   "The devilspie equivalent of Hy's `do` : evaluates all the function calls within, returns the result of the last evaluation."
   `(do ~@forms))
 
@@ -433,10 +434,10 @@
        ~then-clause
        ~(when else-clause else-clause)))
 
-(defmacro dsprint [#*args]
+(defmacro dsprint [#* args]
   "Equivalent to Devilspie's print.
    Print args without trailing newline, returns boolean."
-  (print #*args :sep ""
+  (print #* args :sep ""
                 :end ""
                 :flush True))
 
@@ -548,9 +549,9 @@
   (*current-window*.pin)
   True)
 
-(defn println [#*args]
+(defn println [#* args]
   "Print args with trailing newline, returns True."
-  (print #*args
+  (print #* args
          :sep "")
   True)
 
@@ -589,14 +590,14 @@
   (*current-window*.set_skip_tasklist active)
   True)
 
-(defn spawn_async [#*cmd]
+(defn spawn_async [#* cmd]
   "Execute a command in the background, returns boolean. Command is given as a single string, or as a series of strings (similar to execl)."
   (import subprocess)
   (setv string-cmd (.join " " (map str cmd)))
   (_print-when-verbose "spawn_async" string-cmd)
   (subprocess.Popen ["bash" "-c" string-cmd]))
 
-(defn spawn_sync [#*cmd]
+(defn spawn_sync [#* cmd]
   "Execute  a  command in the foreground (returns command output as string, or `False` on error). Command is given as a single string, or as a series of strings (similar to execl)."
   (import subprocess)
   (setv string-cmd (.join " " (map str cmd)))
@@ -609,7 +610,7 @@
   "NOT YET IMPLEMENTED. Make the current window stick to all viewports, returns True."
   (_not-yet-implemented "stick"))
 
-(defn str+ [#*args]
+(defn str+ [#* args]
   "Transform parameters into strings and concat them with spaces in between."
   (. "" (join (list (map str args)))))
 
@@ -890,31 +891,31 @@
      (get_geometry)
      width))
 
-(defmacro on-class-change [#*forms]
+(defmacro on-class-change [#* forms]
   "Runs <forms> on class changes of the current window."
   `(_attach-to-window-event "class-changed" (_callback_with_code_hash (fn [] ~@forms))))
 
-(defmacro on-icon-chang [#*forms]
+(defmacro on-icon-chang [#* forms]
   "Runs <forms> on icon changes of the current window."
   `(_attach-to-window-event "icon-changed" (_callback_with_code_hash (fn [] ~@forms))))
 
-(defmacro on-name-change [#*forms]
+(defmacro on-name-change [#* forms]
   "Runs <forms> on name changes of the current window."
   `(_attach-to-window-event "name-changed" (_callback_with_code_hash (fn [] ~@forms))))
 
 (setv _*monitors-callbacks* (set))
-(defmacro on-monitors-change [#*forms]
+(defmacro on-monitors-change [#* forms]
   "Runs <forms> on changes in monitor setup."
   `(_*monitors-callbacks*.add (_callback_with_code_hash (fn [] ~@forms))))
   
-(defmacro once [#*forms]
+(defmacro once [#* forms]
   "Eval forms only once in a given Angelspie session.
    Can be useful to, say, close a window once for a specific
    app."
   `(_once "global"
           ~@forms))
 
-(defmacro once-per-window [#*forms]
+(defmacro once-per-window [#* forms]
   "Eval forms only once for each window in a given Angelspie session.
    Useful for example to focus newly created windows after they have
    changed workspace."
@@ -1033,7 +1034,7 @@
    See the documentation for `tile` for more information."
   (case position
     "last"         (ap-if (_last-tiling-pattern)
-                      (return (tile #* it))
+                      (return (tile #*  it))
                       (do (print "No last tiling pattern for this window")
                           (return False)))
     "left"         (return (tile "*"    "*_" ))
@@ -1143,7 +1144,7 @@
   (_with-window window
     (for [script-name (*scripts*.keys)]
       (_print-when-verbose "== Running" script-name)
-      (hy.eval (hy.read-many (get *scripts* script-name)) :filename script-name :locals (globals)))
+      (hy.eval (hy.read-many (get *scripts* script-name)) :locals (globals)))
     (for [eval-str *command-line-args*.eval]
       (hy.eval (hy.read-many eval-str) :locals (globals)))))
 

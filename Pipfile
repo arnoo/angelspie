@@ -4,14 +4,14 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-hy = "0.26.0"
-hyrule = "0.3.0"
+hy = "0.28.0"
+hyrule = "0.5.0"
 favicon = "0.7.0"
-pgi = "0.0.11.2"
+#pgi = "0.0.11.2"
 
 [requires]
-python_version = "3.11"
-python_full_version = "3.11.3"
+python_version = "3.12"
+python_full_version = "3.12.3"
 
 [dev-packages]
 pex = "*"
