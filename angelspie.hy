@@ -31,12 +31,14 @@
 (import signal)
 (import struct)
 (import sys)
+(import threading)
 (import time)
 (import weakref)
 (import Xlib)
 (import Xlib.display)
 (import Xlib.ext [randr])
 (require hyrule *)
+(import hyrule.collections [assoc])
 
 (setv *disp* (Xlib.display.Display))
 (setv *gdk-disp* (GdkX11.X11Display.get_default))
@@ -267,6 +269,11 @@
                  :help "as code to eval. Disables loading of config files, happens after processing conf_file arguments."
                  :metavar "AS_CODE"
                  :nargs "*")
+  (parser.add-argument 
+                 "--only-new"
+                 :action "store_const"
+                 :const True
+                 :help "Only run scripts on windows created after startup")
   (parser.add-argument
                  "--load"
                  :default []
@@ -275,7 +282,7 @@
                  :nargs "*")
   (parser.add-argument 
                  "-v"
-                  "--verbose"
+                 "--verbose"
                  :action "store_const"
                  :const True
                  :help "Verbose output")
@@ -283,10 +290,30 @@
                  "--wid"
                  :help "Execute scripts once, for window with XID <wid>."
                  :nargs "?")
+  (parser.add-argument
+                 "--delay"
+                 :help "Execute scripts only on windows created after <delay> seconds"
+                 :default 0
+                 :type int
+                 :nargs "?")
   (parser.parse-args))
 
 (defn _not-yet-implemented [fn-name]
   (print f"WARNING: Call to function '{fn-name}' which is not yet implemented."))
+
+(setv +no-urgency-windows* {})
+(defn _on-state-changed [window changed-mask new-state]
+  (when (and (window.is_urgent)
+             [+no-urgency-windows+ window])
+    (do
+      (print (+ "Window " (window.get_name) " became urgent. Removing urgency..."))
+      (window.set_urgency_hint False))))
+
+(defn _on-workspace-changed [window user-data]
+  (let [workspace (.get_workspace window)]
+    (if workspace
+      (print "Window moved to workspace:" (.get_name workspace))
+      (print "Window is on no specific workspace (possibly minimized or on all workspaces)"))))
 
 (defn _print-when-verbose [#* args]
   (when *command-line-args*.verbose
@@ -592,10 +619,8 @@
 
 (defn spawn_async [#* cmd]
   "Execute a command in the background, returns boolean. Command is given as a single string, or as a series of strings (similar to execl)."
-  (import subprocess)
-  (setv string-cmd (.join " " (map str cmd)))
-  (_print-when-verbose "spawn_async" string-cmd)
-  (subprocess.Popen ["bash" "-c" string-cmd]))
+  (import multiprocessing)
+  (.start (multiprocessing.Process :target spawn_sync :args cmd)))
 
 (defn spawn_sync [#* cmd]
   "Execute  a  command in the foreground (returns command output as string, or `False` on error). Command is given as a single string, or as a series of strings (similar to execl)."
@@ -730,8 +755,12 @@
   "Gets the favicon for the active tab of a browser window.
    Uses browser-url, so only works properly on Firefox at
    the moment."
+  (import requests)
   (ap-when (browser-url)
-    (_favicon-for-url it :use-full-url use-full-url)))
+    (try
+      (_favicon-for-url it :use-full-url use-full-url)
+      (except [requests.exceptions.ConnectTimeout]
+        (return None)))))
 
 (defn browser-url []
   "Gets the URL for the active tab of a browser window
@@ -782,15 +811,21 @@
         (setv url (. url-bar
                     (queryText)
                     (getText 0 -1)))
-        (when (= (window_class) "Chromium")
-          (when (= url "Address and search bar")
-            (return None))
-          (setv location-icon-text
-                (. (_get-accessible-child-by-attr-value browser-window
-                                                        "class"
-                                                        "LocationIconView")
-                   (get_description)))
-          (setv url (+ (if (= location-icon-text "Not secure") "http" "https") "://" url)))
+        (case (window_class)
+           "firefox" (do
+                       (when (url.startswith "about:")
+                         (return None))
+                       (when (not (re.match "^[a-z]+://" url))
+		         (setv url (+ "http://" url))))
+           "Chromium" (do
+                        (when (= url "Address and search bar")
+                          (return None))
+                        (setv location-icon-text
+                              (. (_get-accessible-child-by-attr-value browser-window
+                                                                      "class"
+                                                                      "LocationIconView")
+                                 (get_description)))
+                        (setv url (+ (if (= location-icon-text "Not secure") "http" "https") "://" url))))
         (return url))))
   (return None))
   
@@ -815,6 +850,10 @@
     Xlib.X.PropModeReplace)
   (*disp*.flush))
 
+(defn disable-urgency []
+  "Prevents a window from activating the 'urgent / needs attention' flag."
+  (setv [+no-urgency-windows+ *current-window*] True))
+
 (defn empty [geom-str [workspace-nb None]]
   "Returns True if rectangle corresponding to geom-str is empty,
    i.e. no windows intersect the rectangle, on the workspace
@@ -826,9 +865,9 @@
     (except [ValueError]
       (return False)))
   (unless workspace-nb
-    (setv workspace-nb (window_workspace)))
+    (setv workspace-nb (window_workspace None :prospective True)))
   (for [window (_wnck-list-windows)]
-    (setv wworkspace (window-workspace window))
+    (setv wworkspace (window-workspace window :prospective True))
     (unless (and wworkspace 
                 (= wworkspace workspace-nb))
       (continue))
@@ -1139,14 +1178,20 @@
 
 ;;  MAIN
 
+(setv *startup-time* (time.time))
 (setv *scripts* {})
-(defn _process-window [window [is-second-run False]]
+(defn _process-window [window]
+  (when (< (time.time)
+           (+ *startup-time* *command-line-args*.delay))
+    (_print-when-verbose "Not processing window: still within startup delay")
+    (return))
   (_with-window window
     (for [script-name (*scripts*.keys)]
       (_print-when-verbose "== Running" script-name)
       (hy.eval (hy.read-many (get *scripts* script-name)) :locals (globals)))
     (for [eval-str *command-line-args*.eval]
       (hy.eval (hy.read-many eval-str) :locals (globals)))))
+
 
 (defn _on-monitors-changed [screen]
   (_print-when-verbose "NEW SCREEN CONFIG, RESTARTING ++++++")
@@ -1156,6 +1201,8 @@
 
 (defn _on-new-window [screen window]
   (_print-when-verbose "NEW WINDOW ++++++")
+  (window.connect "workspace-changed" _on-workspace-changed None)
+  (window.connect "state-changed" _on-state-changed)
   (_process-window window))
 
 (defn _attach-handler-to-all-screens []
